@@ -39,7 +39,7 @@ Lints are set to `deny` for both `warnings` and `clippy::all`. The build must be
 
 | Topic | Decision |
 |---|---|
-| Storage | JSONL, one file per project: `~/.timeclock/{project_id}.jsonl` |
+| Storage | JSONL, one file per project: `~/.local/share/desktop-assistant/timeclock/{project_id}.jsonl` |
 | Append-only | Corrections append a new record with the same `session_id`; last record wins |
 | Active sessions | At most one active session **per project** (not a global lock) |
 | Timestamps | Always RFC3339 UTC. No local timezone conversion in the server |
@@ -51,17 +51,21 @@ Lints are set to `deny` for both `warnings` and `clippy::all`. The build must be
 |---|---|
 | `timeclock.project.list` | List all known projects |
 | `timeclock.project.upsert` | Create or rename a project |
+| `timeclock.project.delete` | Delete a project; refuses if sessions exist unless `delete_entries=true` |
 | `timeclock.clock_in` | Start a session for a project |
 | `timeclock.clock_out` | End the active session for a project |
 | `timeclock.session.get_active` | Return active sessions (optionally filtered by project) |
 | `timeclock.session.query` | Query sessions by time window; supports JSON or CSV output |
 | `timeclock.session.correct` | Amend fields on an existing session |
+| `timeclock.session.delete` | Permanently delete a session by ID |
 
 Full input/output schemas are in [docs/spec.md](docs/spec.md).
 
 ## Storage format
 
-Each project's sessions live in `~/.timeclock/{project_id}.jsonl`. Every line is a self-contained JSON session object:
+Each project's sessions live in `~/.local/share/desktop-assistant/timeclock/{project_id}.jsonl`. Every line is a self-contained JSON session object:
+
+The path follows XDG conventions: `$XDG_DATA_HOME/desktop-assistant/timeclock/` (falling back to `~/.local/share/desktop-assistant/timeclock/`). Override with the `TIMECLOCK_DATA_DIR` env var.
 
 ```json
 {"session_id":"<uuid>","project_id":"acme","time_in":"2026-02-19T14:00:00Z","time_out":"2026-02-19T16:30:00Z","note":"initial design","tags":[],"duration_seconds":9000}

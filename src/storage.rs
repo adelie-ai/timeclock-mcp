@@ -8,14 +8,23 @@ use std::path::PathBuf;
 use crate::error::{Result, StorageError};
 use crate::models::{Project, Session};
 
-/// Base directory for all timeclock data: `~/.timeclock/`
-/// In tests, `TIMECLOCK_DATA_DIR` overrides the default location.
+/// Base directory for all timeclock data.
+///
+/// Resolution order:
+///   1. `TIMECLOCK_DATA_DIR` env var (used in tests and for custom overrides)
+///   2. `$XDG_DATA_HOME/desktop-assistant/timeclock`
+///   3. `~/.local/share/desktop-assistant/timeclock` (XDG default)
 pub fn data_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("TIMECLOCK_DATA_DIR") {
         return PathBuf::from(dir);
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".timeclock")
+    let xdg_data_home = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        format!("{home}/.local/share")
+    });
+    PathBuf::from(xdg_data_home)
+        .join("desktop-assistant")
+        .join("timeclock")
 }
 
 /// Path to the projects registry file.

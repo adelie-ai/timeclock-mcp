@@ -45,7 +45,9 @@ Derived fields (computed):
 Local persistence.
 
 **Decision: JSONL**, one file per project.
-- Path: `~/.timeclock/{project_id}.jsonl`
+- Path: `~/.local/share/desktop-assistant/timeclock/{project_id}.jsonl`
+  (follows XDG: `$XDG_DATA_HOME/desktop-assistant/timeclock/`; override with `TIMECLOCK_DATA_DIR` env var)
+- Project registry: `_projects.jsonl` in the same directory
 - Each line is a JSON-encoded session record.
 - Append-only writes; corrections are handled by appending a replacement record
   with the same `session_id` (last record for a given `session_id` wins).
@@ -73,6 +75,20 @@ Input:
 
 Output:
 - `project: { project_id, name }`
+
+#### `timeclock.project.delete`
+Delete a project from the registry.
+
+Input:
+- `project_id` (required)
+- `delete_entries` (optional bool; default `false`)
+
+Behaviour:
+- If the project has any recorded sessions and `delete_entries` is `false`, the operation is **refused** (molly guard). The error message names the session count and instructs the caller to pass `delete_entries=true`.
+- If `delete_entries=true`, the session file is removed before deleting the project record.
+
+Output:
+- `{ deleted_project, sessions_deleted, session_count }`
 
 #### `timeclock.clock_in`
 Start a new session.
@@ -143,6 +159,18 @@ Errors:
 - if `session_id` does not exist
 - if resulting `time_out` < `time_in`
 
+#### `timeclock.session.delete`
+Permanently delete a session by ID. Use `timeclock.session.correct` instead if you only need to amend fields.
+
+Input:
+- `session_id` (required)
+
+Output:
+- `{ deleted_session, project_id }`
+
+Errors:
+- if `session_id` does not exist
+
 ### Resources (optional)
 Potential resources to expose later:
 - `timeclock://sessions` (read-only listing)
@@ -165,7 +193,7 @@ This server is a **data source**, not a billing system. The intent is to export 
   - `[lints.clippy] all = "deny"`
 
 ## Decisions
-1. **Storage**: JSONL, one file per project (`~/.timeclock/{project_id}.jsonl`).
+1. **Storage**: JSONL, one file per project (`~/.local/share/desktop-assistant/timeclock/{project_id}.jsonl`).
 2. **Active sessions**: One active session per project (not a global lock).
 3. **Corrections**: Supported via `timeclock.session.correct`; implemented as an appended replacement record in the JSONL file.
 4. **Time zones**: Always UTC. No local rendering in the server; clients may format for display.
