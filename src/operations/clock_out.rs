@@ -4,6 +4,7 @@ use chrono::Utc;
 use serde_json::{Value, json};
 
 use crate::error::{Result, ValidationError};
+use crate::models::NoteEntry;
 use crate::storage;
 
 /// End the active session for `project_id`.
@@ -28,7 +29,10 @@ pub fn run(project_id: &str, time_out: Option<&str>, note: Option<&str>) -> Resu
 
     session.time_out = Some(time_out_str);
     if let Some(n) = note {
-        session.note = Some(n.to_string());
+        session.notes.push(NoteEntry {
+            timestamp: Utc::now().to_rfc3339(),
+            text: n.to_string(),
+        });
     }
 
     storage::append_session(&session)?;

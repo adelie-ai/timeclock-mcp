@@ -109,7 +109,7 @@ mod tests {
             project_id: project_id.to_string(),
             time_in: time_in.to_string(),
             time_out: Some(time_out.to_string()),
-            note: None,
+            notes: vec![],
             tags: vec![],
         }
     }

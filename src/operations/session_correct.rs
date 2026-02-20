@@ -1,15 +1,18 @@
 #![deny(warnings)]
 
 use chrono::DateTime;
+use chrono::Utc;
 use serde_json::{Value, json};
 
 use crate::error::{Result, StorageError, ValidationError};
+use crate::models::NoteEntry;
 use crate::storage;
 
 /// Correct fields on an existing session.
 ///
-/// Amends one or more of `time_in`, `time_out`, `note`, or `tags`.
-/// Implemented by reading the existing session and appending a replacement
+/// Amends one or more of `time_in`, `time_out`, `tags`. If `note` is provided
+/// it is **appended** as a new timestamped note entry (use `timeclock.session.add_note`
+/// for a dedicated note-only append).  Implemented by re-appending a replacement
 /// record with the same `session_id` (last-record-wins).
 pub fn run(
     session_id: &str,
@@ -40,7 +43,10 @@ pub fn run(
         session.time_out = Some(dt.to_rfc3339());
     }
     if let Some(n) = note {
-        session.note = Some(n.to_string());
+        session.notes.push(NoteEntry {
+            timestamp: Utc::now().to_rfc3339(),
+            text: n.to_string(),
+        });
     }
     if let Some(t) = tags {
         session.tags = t;
@@ -76,7 +82,7 @@ mod tests {
         let clocked = clock_in::run("acme", None, None, vec![]).unwrap();
         let sid = clocked["session"]["session_id"].as_str().unwrap().to_string();
         let result = run(&sid, None, None, Some("updated note"), None).unwrap();
-        assert_eq!(result["session"]["note"], "updated note");
+        assert_eq!(result["session"]["notes"][0]["text"], "updated note");
     }
 
     #[test]
@@ -101,9 +107,11 @@ mod tests {
         let clocked = clock_in::run("acme", None, Some("original"), vec![]).unwrap();
         let sid = clocked["session"]["session_id"].as_str().unwrap().to_string();
         run(&sid, None, None, Some("corrected"), None).unwrap();
-        // Re-read and confirm corrected note is returned
+        // Re-read and confirm both notes are present
         let sessions = storage::read_sessions("acme").unwrap();
         let s = sessions.iter().find(|s| s.session_id == sid).unwrap();
-        assert_eq!(s.note.as_deref(), Some("corrected"));
+        assert_eq!(s.notes.len(), 2);
+        assert_eq!(s.notes[0].text, "original");
+        assert_eq!(s.notes[1].text, "corrected");
     }
 }

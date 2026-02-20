@@ -37,7 +37,7 @@ mod tests {
             project_id: project.to_string(),
             time_in: "2025-03-01T08:00:00Z".to_string(),
             time_out: Some("2025-03-01T09:00:00Z".to_string()),
-            note: None,
+            notes: vec![],
             tags: vec![],
         }
     }

@@ -57,7 +57,7 @@ This server should expose a small tool set.
 
 ### Tools
 
-#### `timeclock.project.list`
+#### `timeclock_project_list`
 List known projects.
 
 Input:
@@ -66,7 +66,7 @@ Input:
 Output:
 - `projects: [{ project_id, name }]`
 
-#### `timeclock.project.upsert`
+#### `timeclock_project_upsert`
 Create/update a project.
 
 Input:
@@ -76,7 +76,7 @@ Input:
 Output:
 - `project: { project_id, name }`
 
-#### `timeclock.project.delete`
+#### `timeclock_project_delete`
 Delete a project from the registry.
 
 Input:
@@ -90,7 +90,7 @@ Behaviour:
 Output:
 - `{ deleted_project, sessions_deleted, session_count }`
 
-#### `timeclock.clock_in`
+#### `timeclock_clock_in`
 Start a new session.
 
 Input:
@@ -105,7 +105,7 @@ Output:
 Errors:
 - if there is already an active session for the given project
 
-#### `timeclock.clock_out`
+#### `timeclock_clock_out`
 End the active session for a project.
 
 Input:
@@ -119,7 +119,7 @@ Output:
 Errors:
 - if there is no active session for the given project
 
-#### `timeclock.session.get_active`
+#### `timeclock_session_get_active`
 Return all currently active sessions, optionally filtered to a single project.
 
 Input:
@@ -128,7 +128,7 @@ Input:
 Output:
 - `sessions: [{ ... }]`
 
-#### `timeclock.session.query`
+#### `timeclock_session_query`
 Query sessions for a time period across one, many, or all projects.
 
 Input:
@@ -139,18 +139,32 @@ Input:
 - `output_file` (optional; if provided, write results to this path instead of returning inline)
 
 Output:
-- `sessions: [{ session_id, project_id, time_in, time_out, note, tags, duration_seconds }]` (when format is `json`)
-- CSV text with columns `session_id, project_id, time_in, time_out, duration_seconds, note, tags` (when format is `csv`)
+- `sessions: [{ session_id, project_id, time_in, time_out, notes, tags, duration_seconds }]` (when format is `json`)
+- CSV text with columns `session_id, project_id, time_in, time_out, duration_seconds, notes, tags` (when format is `csv`)
 
-#### `timeclock.session.correct`
+#### `timeclock_session_add_note`
+Append a timestamped note to an existing session. Works on both active and closed sessions.
+
+Input:
+- `session_id` (required)
+- `text` (required)
+
+Output:
+- `session: { ... }` (updated session with new note appended)
+
+Errors:
+- if `session_id` does not exist
+- if `text` is empty
+
+#### `timeclock_session_correct`
 Correct fields on an existing session (supports amending past entries).
 
 Input:
 - `session_id` (required)
 - `time_in` (optional; RFC3339, UTC)
 - `time_out` (optional; RFC3339, UTC)
-- `note` (optional)
-- `tags` (optional)
+- `note` (optional; **appended** as a new timestamped note entry)
+- `tags` (optional; replaces tag list)
 
 Output:
 - `session: { ... }` (updated session)
@@ -159,8 +173,8 @@ Errors:
 - if `session_id` does not exist
 - if resulting `time_out` < `time_in`
 
-#### `timeclock.session.delete`
-Permanently delete a session by ID. Use `timeclock.session.correct` instead if you only need to amend fields.
+#### `timeclock_session_delete`
+Permanently delete a session by ID. Use `timeclock_session_correct` instead if you only need to amend fields.
 
 Input:
 - `session_id` (required)

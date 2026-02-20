@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::error::{Result, ValidationError};
-use crate::models::{Project, Session};
+use crate::models::{NoteEntry, Project, Session};
 use crate::storage;
 
 /// Start a new session for `project_id`.
@@ -48,12 +48,16 @@ pub fn run(
         })?;
     }
 
+    let notes = note
+        .map(|text| vec![NoteEntry { timestamp: Utc::now().to_rfc3339(), text: text.to_string() }])
+        .unwrap_or_default();
+
     let session = Session {
         session_id: Uuid::new_v4().to_string(),
         project_id: project_id.to_string(),
         time_in: time_in_str,
         time_out: None,
-        note: note.map(str::to_string),
+        notes,
         tags,
     };
     storage::append_session(&session)?;

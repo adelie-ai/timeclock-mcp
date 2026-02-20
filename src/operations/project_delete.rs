@@ -66,7 +66,7 @@ mod tests {
             project_id: "proj_b".to_string(),
             time_in: "2025-01-01T09:00:00Z".to_string(),
             time_out: None,
-            note: None,
+            notes: vec![],
             tags: vec![],
         };
         storage::append_session(&session).unwrap();
@@ -88,7 +88,7 @@ mod tests {
             project_id: "proj_c".to_string(),
             time_in: "2025-01-01T09:00:00Z".to_string(),
             time_out: None,
-            note: None,
+            notes: vec![],
             tags: vec![],
         };
         storage::append_session(&session).unwrap();

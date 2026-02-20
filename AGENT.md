@@ -49,15 +49,16 @@ Lints are set to `deny` for both `warnings` and `clippy::all`. The build must be
 
 | Tool | Purpose |
 |---|---|
-| `timeclock.project.list` | List all known projects |
-| `timeclock.project.upsert` | Create or rename a project |
-| `timeclock.project.delete` | Delete a project; refuses if sessions exist unless `delete_entries=true` |
-| `timeclock.clock_in` | Start a session for a project |
-| `timeclock.clock_out` | End the active session for a project |
-| `timeclock.session.get_active` | Return active sessions (optionally filtered by project) |
-| `timeclock.session.query` | Query sessions by time window; supports JSON or CSV output |
-| `timeclock.session.correct` | Amend fields on an existing session |
-| `timeclock.session.delete` | Permanently delete a session by ID |
+| `timeclock_project_list` | List all known projects |
+| `timeclock_project_upsert` | Create or rename a project |
+| `timeclock_project_delete` | Delete a project; refuses if sessions exist unless `delete_entries=true` |
+| `timeclock_clock_in` | Start a session for a project |
+| `timeclock_clock_out` | End the active session for a project |
+| `timeclock_session_get_active` | Return active sessions (optionally filtered by project) |
+| `timeclock_session_query` | Query sessions by time window; supports JSON or CSV output |
+| `timeclock_session_add_note` | Append a timestamped note to any session (active or closed) |
+| `timeclock_session_correct` | Amend time fields or tags on an existing session |
+| `timeclock_session_delete` | Permanently delete a session by ID |
 
 Full input/output schemas are in [docs/spec.md](docs/spec.md).
 

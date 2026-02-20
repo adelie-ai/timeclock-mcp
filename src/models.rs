@@ -17,6 +17,14 @@ impl From<Project> for Value {
     }
 }
 
+/// A timestamped note attached to a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteEntry {
+    /// RFC3339 UTC — records when the note was written.
+    pub timestamp: String,
+    pub text: String,
+}
+
 /// A contiguous work interval for a project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
@@ -26,7 +34,8 @@ pub struct Session {
     pub time_in: String,
     /// RFC3339 UTC; None while session is active
     pub time_out: Option<String>,
-    pub note: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<NoteEntry>,
     #[serde(default)]
     pub tags: Vec<String>,
 }
@@ -47,15 +56,21 @@ impl Session {
             "project_id": self.project_id,
             "time_in": self.time_in,
             "time_out": self.time_out,
-            "note": self.note,
+            "notes": self.notes.iter().map(|n| json!({ "timestamp": n.timestamp, "text": n.text })).collect::<Vec<_>>(),
             "tags": self.tags,
             "duration_seconds": self.duration_seconds(),
         })
     }
 
     /// Render as a CSV row (no header). Fields:
-    /// session_id, project_id, time_in, time_out, duration_seconds, note, tags
+    /// session_id, project_id, time_in, time_out, duration_seconds, notes, tags
     pub fn to_csv_row(&self) -> String {
+        let notes_text = self
+            .notes
+            .iter()
+            .map(|n| n.text.as_str())
+            .collect::<Vec<_>>()
+            .join("|");
         let fields: Vec<String> = vec![
             csv_field(&self.session_id),
             csv_field(&self.project_id),
@@ -64,7 +79,7 @@ impl Session {
             self.duration_seconds()
                 .map(|d| d.to_string())
                 .unwrap_or_default(),
-            csv_field(self.note.as_deref().unwrap_or("")),
+            csv_field(&notes_text),
             csv_field(&self.tags.join(";")),
         ];
         fields.join(",")
@@ -81,4 +96,4 @@ fn csv_field(s: &str) -> String {
 }
 
 pub const CSV_HEADER: &str =
-    "session_id,project_id,time_in,time_out,duration_seconds,note,tags";
+    "session_id,project_id,time_in,time_out,duration_seconds,notes,tags";
