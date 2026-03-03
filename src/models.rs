@@ -41,11 +41,18 @@ pub struct Session {
 }
 
 impl Session {
-    /// Compute duration in whole seconds, or None if still active.
+    /// Compute duration in whole seconds.
+    ///
+    /// - If the session is closed, uses (time_out - time_in).
+    /// - If the session is active, uses (Utc::now() - time_in).
+    ///
+    /// Returns None only if time parsing fails.
     pub fn duration_seconds(&self) -> Option<i64> {
-        let time_out = self.time_out.as_ref()?;
         let t_in: DateTime<Utc> = self.time_in.parse().ok()?;
-        let t_out: DateTime<Utc> = time_out.parse().ok()?;
+        let t_out: DateTime<Utc> = match self.time_out.as_ref() {
+            Some(to) => to.parse().ok()?,
+            None => Utc::now(),
+        };
         Some((t_out - t_in).num_seconds())
     }
 
