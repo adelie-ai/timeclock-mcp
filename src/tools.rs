@@ -283,7 +283,10 @@ impl ToolRegistry {
                     .get("format")
                     .and_then(|v| v.as_str())
                     .unwrap_or("json");
-                let output_file = args.get("output_file").and_then(|v| v.as_str());
+                let output_file = args
+                    .get("output_file")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty());
                 session_query::run(start, end, &project_ids, format, output_file)
             }
             "timeclock_session_add_note" => {
