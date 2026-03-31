@@ -5,37 +5,17 @@
 
 ---
 
-## High Severity
-
-### 1. Path Traversal via project_id
-
-**File:** `src/storage.rs:36-38`
-
-```rust
-pub fn session_file(project_id: &str) -> PathBuf {
-    data_dir().join(format!("{project_id}.jsonl"))
-}
-```
-
-`project_id` is used directly in path construction. A value like `../../tmp/exploit` writes outside the data directory.
-
-**Recommendation:** Validate that `project_id` contains only `[a-zA-Z0-9_-]` characters, or canonicalize and verify the path stays within `data_dir()`.
-
----
-
-### 2. Unbounded Memory Allocation from Content-Length
-
-**File:** `src/transport.rs` (same pattern as tasks-mcp)
-
-No upper bound on Content-Length header before buffer allocation.
-
-**Recommendation:** Add maximum Content-Length check.
-
----
-
 ## Medium Severity
 
-### 3. Unbounded CSV Output
+### 1. No Time Validation in Corrections (MEDIUM)
+
+Session corrections don't validate `time_out >= time_in`, potentially creating invalid records.
+
+**Recommendation:** Add validation.
+
+---
+
+### 2. Unbounded CSV Output (MEDIUM)
 
 **File:** `src/operations/session_query.rs:74-89`
 
@@ -45,16 +25,14 @@ CSV rendering builds entire result in memory. Millions of sessions could exhaust
 
 ---
 
-### 4. No Time Validation in Corrections
+## Resolved (2026-03-31)
 
-Session corrections don't validate `time_out >= time_in`, potentially creating invalid records.
-
-**Recommendation:** Add validation.
-
----
+- Path traversal — `validate_project_id()` restricts to `[a-zA-Z0-9_-]`
+- Content-Length DoS — 10 MiB limit added to transport
 
 ## Positive Findings
 
 - JSONL storage format (append-only, simple)
 - No shell command execution
 - No `unsafe` code
+- Project IDs validated before file path construction
