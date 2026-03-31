@@ -25,11 +25,6 @@ CSV rendering builds entire result in memory. Millions of sessions could exhaust
 
 ---
 
-## Resolved (2026-03-31)
-
-- Path traversal — `validate_project_id()` restricts to `[a-zA-Z0-9_-]`
-- Content-Length DoS — 10 MiB limit added to transport
-
 ## Positive Findings
 
 - JSONL storage format (append-only, simple)
