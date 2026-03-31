@@ -32,6 +32,24 @@ fn projects_file() -> PathBuf {
     data_dir().join("_projects.jsonl")
 }
 
+/// Validate that a project_id is safe for use in file paths.
+/// Only alphanumeric characters, hyphens, and underscores are allowed.
+pub fn validate_project_id(project_id: &str) -> Result<()> {
+    if project_id.is_empty() {
+        return Err(StorageError::InvalidProjectId("project_id is empty".to_string()).into());
+    }
+    if !project_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(StorageError::InvalidProjectId(format!(
+            "project_id contains invalid characters: {project_id}"
+        ))
+        .into());
+    }
+    Ok(())
+}
+
 /// Path to the JSONL file for a given project's sessions.
 pub fn session_file(project_id: &str) -> PathBuf {
     data_dir().join(format!("{project_id}.jsonl"))
@@ -102,6 +120,7 @@ pub fn project_exists(project_id: &str) -> Result<bool> {
 /// Read all sessions for a project (last record per session_id wins),
 /// sorted by time_in ascending.
 pub fn read_sessions(project_id: &str) -> Result<Vec<Session>> {
+    validate_project_id(project_id)?;
     let path = session_file(project_id);
     if !path.exists() {
         return Ok(Vec::new());
@@ -164,6 +183,7 @@ pub fn find_active_session(project_id: &str) -> Result<Option<Session>> {
 
 /// Append a session record to the project's JSONL file.
 pub fn append_session(session: &Session) -> Result<()> {
+    validate_project_id(&session.project_id)?;
     ensure_data_dir()?;
     let path = session_file(&session.project_id);
     let mut file = OpenOptions::new()
@@ -201,6 +221,7 @@ pub fn delete_project(project_id: &str) -> Result<()> {
 
 /// Delete the JSONL session file for a project (if it exists).
 pub fn delete_project_sessions(project_id: &str) -> Result<()> {
+    validate_project_id(project_id)?;
     let path = session_file(project_id);
     if path.exists() {
         fs::remove_file(&path)
@@ -211,6 +232,7 @@ pub fn delete_project_sessions(project_id: &str) -> Result<()> {
 
 /// Rewrite a project's session JSONL with only the provided sessions.
 pub fn rewrite_sessions(project_id: &str, sessions: &[Session]) -> Result<()> {
+    validate_project_id(project_id)?;
     ensure_data_dir()?;
     let path = session_file(project_id);
     let mut file = fs::File::create(&path)

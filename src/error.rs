@@ -36,6 +36,9 @@ pub enum StorageError {
 
     #[error("Session not found: {0}")]
     SessionNotFound(String),
+
+    #[error("Invalid project ID: {0}")]
+    InvalidProjectId(String),
 }
 
 #[derive(Error, Debug)]

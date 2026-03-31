@@ -127,12 +127,22 @@ impl StdioTransportHandler {
         &mut self,
         first_line: &str,
     ) -> Result<String> {
+        const MAX_CONTENT_LENGTH: usize = 10 * 1024 * 1024; // 10 MiB
+
         let content_length =
             parse_content_length_header(first_line).ok_or_else(|| {
                 TransportError::InvalidMessage(format!(
                     "Expected Content-Length header, got: {first_line}"
                 ))
             })?;
+
+        if content_length > MAX_CONTENT_LENGTH {
+            return Err(TransportError::InvalidMessage(format!(
+                "Content-Length {content_length} exceeds maximum ({MAX_CONTENT_LENGTH})"
+            ))
+            .into());
+        }
+
         // Drain any remaining headers until blank line.
         loop {
             let mut line = String::new();
