@@ -17,7 +17,10 @@ pub fn run(project_id: Option<&str>, name: &str) -> Result<Value> {
         Some(id) if !id.is_empty() => id.to_string(),
         _ => derive_id(name),
     };
-    let project = Project { project_id, name: name.to_string() };
+    let project = Project {
+        project_id,
+        name: name.to_string(),
+    };
     storage::upsert_project(&project)?;
     Ok(json!({ "project": Value::from(project) }))
 }
@@ -25,7 +28,13 @@ pub fn run(project_id: Option<&str>, name: &str) -> Result<Value> {
 fn derive_id(name: &str) -> String {
     name.to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

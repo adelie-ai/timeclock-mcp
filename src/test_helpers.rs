@@ -22,7 +22,10 @@ impl TestEnv {
         unsafe {
             std::env::set_var("TIMECLOCK_DATA_DIR", dir.path());
         }
-        Self { _dir: dir, _guard: guard }
+        Self {
+            _dir: dir,
+            _guard: guard,
+        }
     }
 }
 

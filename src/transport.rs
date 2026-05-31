@@ -55,9 +55,7 @@ impl StdioTransportHandler {
     pub async fn write_message(&mut self, message: &str) -> Result<()> {
         match self.framing {
             StdioFraming::ContentLength => self.write_message_content_length(message).await,
-            StdioFraming::Auto | StdioFraming::Newline => {
-                self.write_message_newline(message).await
-            }
+            StdioFraming::Auto | StdioFraming::Newline => self.write_message_newline(message).await,
         }
     }
 
@@ -66,7 +64,10 @@ impl StdioTransportHandler {
             .write_all(message.as_bytes())
             .await
             .map_err(TransportError::Io)?;
-        self.stdout.write_all(b"\n").await.map_err(TransportError::Io)?;
+        self.stdout
+            .write_all(b"\n")
+            .await
+            .map_err(TransportError::Io)?;
         self.stdout.flush().await.map_err(TransportError::Io)?;
         Ok(())
     }
@@ -78,14 +79,21 @@ impl StdioTransportHandler {
             .write_all(header.as_bytes())
             .await
             .map_err(TransportError::Io)?;
-        self.stdout.write_all(bytes).await.map_err(TransportError::Io)?;
+        self.stdout
+            .write_all(bytes)
+            .await
+            .map_err(TransportError::Io)?;
         self.stdout.flush().await.map_err(TransportError::Io)?;
         Ok(())
     }
 
     async fn read_message_newline(&mut self) -> Result<String> {
         let mut line = String::new();
-        let n = self.stdin.read_line(&mut line).await.map_err(TransportError::Io)?;
+        let n = self
+            .stdin
+            .read_line(&mut line)
+            .await
+            .map_err(TransportError::Io)?;
         if n == 0 {
             return Err(TransportError::ConnectionClosed.into());
         }
@@ -95,7 +103,11 @@ impl StdioTransportHandler {
     async fn read_message_auto(&mut self) -> Result<String> {
         loop {
             let mut line = String::new();
-            let n = self.stdin.read_line(&mut line).await.map_err(TransportError::Io)?;
+            let n = self
+                .stdin
+                .read_line(&mut line)
+                .await
+                .map_err(TransportError::Io)?;
             if n == 0 {
                 return Err(TransportError::ConnectionClosed.into());
             }
@@ -116,11 +128,16 @@ impl StdioTransportHandler {
 
     async fn read_message_content_length(&mut self) -> Result<String> {
         let mut first = String::new();
-        let n = self.stdin.read_line(&mut first).await.map_err(TransportError::Io)?;
+        let n = self
+            .stdin
+            .read_line(&mut first)
+            .await
+            .map_err(TransportError::Io)?;
         if n == 0 {
             return Err(TransportError::ConnectionClosed.into());
         }
-        self.read_message_content_length_with_first_line(trim_crlf(&first)).await
+        self.read_message_content_length_with_first_line(trim_crlf(&first))
+            .await
     }
 
     async fn read_message_content_length_with_first_line(
@@ -129,12 +146,11 @@ impl StdioTransportHandler {
     ) -> Result<String> {
         const MAX_CONTENT_LENGTH: usize = 10 * 1024 * 1024; // 10 MiB
 
-        let content_length =
-            parse_content_length_header(first_line).ok_or_else(|| {
-                TransportError::InvalidMessage(format!(
-                    "Expected Content-Length header, got: {first_line}"
-                ))
-            })?;
+        let content_length = parse_content_length_header(first_line).ok_or_else(|| {
+            TransportError::InvalidMessage(format!(
+                "Expected Content-Length header, got: {first_line}"
+            ))
+        })?;
 
         if content_length > MAX_CONTENT_LENGTH {
             return Err(TransportError::InvalidMessage(format!(
@@ -146,7 +162,11 @@ impl StdioTransportHandler {
         // Drain any remaining headers until blank line.
         loop {
             let mut line = String::new();
-            let n = self.stdin.read_line(&mut line).await.map_err(TransportError::Io)?;
+            let n = self
+                .stdin
+                .read_line(&mut line)
+                .await
+                .map_err(TransportError::Io)?;
             if n == 0 {
                 return Err(TransportError::ConnectionClosed.into());
             }
@@ -159,8 +179,7 @@ impl StdioTransportHandler {
             .read_exact(&mut buf)
             .await
             .map_err(TransportError::Io)?;
-        String::from_utf8(buf).map_err(|e| {
-            TransportError::InvalidMessage(format!("Invalid UTF-8: {e}")).into()
-        })
+        String::from_utf8(buf)
+            .map_err(|e| TransportError::InvalidMessage(format!("Invalid UTF-8: {e}")).into())
     }
 }
