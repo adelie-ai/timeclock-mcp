@@ -11,15 +11,15 @@ mod tools;
 mod transport;
 
 use axum::{
-    extract::{ws::WebSocketUpgrade, State},
+    Router,
+    extract::{State, ws::WebSocketUpgrade},
     response::Response,
     routing::get,
-    Router,
 };
 use clap::{Parser, ValueEnum};
 use error::Result;
-use server::McpServer;
 use serde_json::Value;
+use server::McpServer;
 use std::fmt;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -149,10 +149,7 @@ async fn run_websocket_server(server: McpServer, host: &str, port: u16) -> Resul
     Ok(())
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(server): State<Arc<McpServer>>,
-) -> Response {
+async fn ws_handler(ws: WebSocketUpgrade, State(server): State<Arc<McpServer>>) -> Response {
     ws.on_upgrade(move |socket| handle_ws_connection(socket, server))
 }
 
@@ -274,9 +271,11 @@ async fn handle_message(server: Arc<McpServer>, message: Value) -> Option<Value>
                 None => Err("tools/call requires 'name' in params".to_string()),
             }
         }
-        Some("shutdown") => {
-            server.handle_shutdown().await.map(|_| Value::Null).map_err(|e| e.to_string())
-        }
+        Some("shutdown") => server
+            .handle_shutdown()
+            .await
+            .map(|_| Value::Null)
+            .map_err(|e| e.to_string()),
         Some("ping") => Ok(serde_json::json!({})),
         None if is_notification => return None,
         _ => {
@@ -309,12 +308,7 @@ fn jsonrpc_success(id: Option<Value>, result: Value) -> Value {
     })
 }
 
-fn jsonrpc_error(
-    id: Option<Value>,
-    code: i64,
-    message: &str,
-    data: Option<Value>,
-) -> Value {
+fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value>) -> Value {
     let mut error = serde_json::json!({
         "code": code,
         "message": message,

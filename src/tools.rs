@@ -228,35 +228,38 @@ impl ToolRegistry {
             "timeclock_project_list" => project_list::run(),
             "timeclock_project_upsert" => {
                 let project_id = args.get("project_id").and_then(|v| v.as_str());
-                let name_str = args
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::InvalidToolParameters("name is required".to_string()))?;
+                let name_str = args.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
+                    McpError::InvalidToolParameters("name is required".to_string())
+                })?;
                 project_upsert::run(project_id, name_str)
             }
             "timeclock_clock_in" => {
-                let project_id = args
-                    .get("project_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::InvalidToolParameters("project_id is required".to_string())
-                    })?;
+                let project_id =
+                    args.get("project_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            McpError::InvalidToolParameters("project_id is required".to_string())
+                        })?;
                 let time_in = args.get("time_in").and_then(|v| v.as_str());
                 let note = args.get("note").and_then(|v| v.as_str());
                 let tags: Vec<String> = args
                     .get("tags")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 clock_in::run(project_id, time_in, note, tags)
             }
             "timeclock_clock_out" => {
-                let project_id = args
-                    .get("project_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::InvalidToolParameters("project_id is required".to_string())
-                    })?;
+                let project_id =
+                    args.get("project_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            McpError::InvalidToolParameters("project_id is required".to_string())
+                        })?;
                 let time_out = args.get("time_out").and_then(|v| v.as_str());
                 let note = args.get("note").and_then(|v| v.as_str());
                 clock_out::run(project_id, time_out, note)
@@ -266,18 +269,20 @@ impl ToolRegistry {
                 session_get_active::run(project_id)
             }
             "timeclock_session_query" => {
-                let start = args
-                    .get("start")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::InvalidToolParameters("start is required".to_string()))?;
-                let end = args
-                    .get("end")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::InvalidToolParameters("end is required".to_string()))?;
+                let start = args.get("start").and_then(|v| v.as_str()).ok_or_else(|| {
+                    McpError::InvalidToolParameters("start is required".to_string())
+                })?;
+                let end = args.get("end").and_then(|v| v.as_str()).ok_or_else(|| {
+                    McpError::InvalidToolParameters("end is required".to_string())
+                })?;
                 let project_ids: Vec<String> = args
                     .get("project_ids")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let format = args
                     .get("format")
@@ -290,43 +295,42 @@ impl ToolRegistry {
                 session_query::run(start, end, &project_ids, format, output_file)
             }
             "timeclock_session_add_note" => {
-                let session_id = args
-                    .get("session_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::InvalidToolParameters("session_id is required".to_string())
-                    })?;
-                let text = args
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::InvalidToolParameters("text is required".to_string())
-                    })?;
+                let session_id =
+                    args.get("session_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            McpError::InvalidToolParameters("session_id is required".to_string())
+                        })?;
+                let text = args.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
+                    McpError::InvalidToolParameters("text is required".to_string())
+                })?;
                 session_add_note::run(session_id, text)
             }
             "timeclock_session_correct" => {
-                let session_id = args
-                    .get("session_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::InvalidToolParameters("session_id is required".to_string())
-                    })?;
+                let session_id =
+                    args.get("session_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            McpError::InvalidToolParameters("session_id is required".to_string())
+                        })?;
                 let time_in = args.get("time_in").and_then(|v| v.as_str());
                 let time_out = args.get("time_out").and_then(|v| v.as_str());
                 let note = args.get("note").and_then(|v| v.as_str());
-                let tags: Option<Vec<String>> = args
-                    .get("tags")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect());
+                let tags: Option<Vec<String>> =
+                    args.get("tags").and_then(|v| v.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    });
                 session_correct::run(session_id, time_in, time_out, note, tags)
             }
             "timeclock_project_delete" => {
-                let project_id = args
-                    .get("project_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::InvalidToolParameters("project_id is required".to_string())
-                    })?;
+                let project_id =
+                    args.get("project_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            McpError::InvalidToolParameters("project_id is required".to_string())
+                        })?;
                 let delete_entries = args
                     .get("delete_entries")
                     .and_then(|v| v.as_bool())
@@ -334,12 +338,12 @@ impl ToolRegistry {
                 project_delete::run(project_id, delete_entries)
             }
             "timeclock_session_delete" => {
-                let session_id = args
-                    .get("session_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::InvalidToolParameters("session_id is required".to_string())
-                    })?;
+                let session_id =
+                    args.get("session_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            McpError::InvalidToolParameters("session_id is required".to_string())
+                        })?;
                 session_delete::run(session_id)
             }
             _ => Err(McpError::ToolNotFound(name.to_string()).into()),

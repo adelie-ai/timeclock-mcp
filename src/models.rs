@@ -102,5 +102,4 @@ fn csv_field(s: &str) -> String {
     }
 }
 
-pub const CSV_HEADER: &str =
-    "session_id,project_id,time_in,time_out,duration_seconds,notes,tags";
+pub const CSV_HEADER: &str = "session_id,project_id,time_in,time_out,duration_seconds,notes,tags";

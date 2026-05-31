@@ -49,7 +49,12 @@ pub fn run(
     }
 
     let notes = note
-        .map(|text| vec![NoteEntry { timestamp: Utc::now().to_rfc3339(), text: text.to_string() }])
+        .map(|text| {
+            vec![NoteEntry {
+                timestamp: Utc::now().to_rfc3339(),
+                text: text.to_string(),
+            }]
+        })
         .unwrap_or_default();
 
     let session = Session {

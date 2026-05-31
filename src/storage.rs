@@ -58,9 +58,8 @@ pub fn session_file(project_id: &str) -> PathBuf {
 /// Ensure the data directory exists.
 pub fn ensure_data_dir() -> Result<()> {
     let dir = data_dir();
-    fs::create_dir_all(&dir).map_err(|e| {
-        StorageError::CreateDirError(dir.display().to_string(), e.to_string())
-    })?;
+    fs::create_dir_all(&dir)
+        .map_err(|e| StorageError::CreateDirError(dir.display().to_string(), e.to_string()))?;
     Ok(())
 }
 
@@ -78,8 +77,8 @@ pub fn read_projects() -> Result<Vec<Project>> {
         .map_err(|e| StorageError::ReadError(path.display().to_string(), e.to_string()))?;
     let mut map: HashMap<String, Project> = HashMap::new();
     for line in BufReader::new(file).lines() {
-        let line = line
-            .map_err(|e| StorageError::ReadError(path.display().to_string(), e.to_string()))?;
+        let line =
+            line.map_err(|e| StorageError::ReadError(path.display().to_string(), e.to_string()))?;
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -129,8 +128,8 @@ pub fn read_sessions(project_id: &str) -> Result<Vec<Session>> {
         .map_err(|e| StorageError::ReadError(path.display().to_string(), e.to_string()))?;
     let mut map: HashMap<String, Session> = HashMap::new();
     for line in BufReader::new(file).lines() {
-        let line = line
-            .map_err(|e| StorageError::ReadError(path.display().to_string(), e.to_string()))?;
+        let line =
+            line.map_err(|e| StorageError::ReadError(path.display().to_string(), e.to_string()))?;
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -154,8 +153,8 @@ pub fn read_all_sessions() -> Result<Vec<Session>> {
     for entry in fs::read_dir(&dir)
         .map_err(|e| StorageError::ReadError(dir.display().to_string(), e.to_string()))?
     {
-        let entry = entry
-            .map_err(|e| StorageError::ReadError(dir.display().to_string(), e.to_string()))?;
+        let entry =
+            entry.map_err(|e| StorageError::ReadError(dir.display().to_string(), e.to_string()))?;
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
             continue;
@@ -290,8 +289,8 @@ pub fn find_session_by_id(session_id: &str) -> Result<Option<(String, Session)>>
     for entry in fs::read_dir(&dir)
         .map_err(|e| StorageError::ReadError(dir.display().to_string(), e.to_string()))?
     {
-        let entry = entry
-            .map_err(|e| StorageError::ReadError(dir.display().to_string(), e.to_string()))?;
+        let entry =
+            entry.map_err(|e| StorageError::ReadError(dir.display().to_string(), e.to_string()))?;
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
             continue;

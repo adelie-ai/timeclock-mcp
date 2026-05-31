@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::fs;
 
 use crate::error::{Result, ValidationError};
-use crate::models::{Session, CSV_HEADER};
+use crate::models::{CSV_HEADER, Session};
 use crate::storage;
 
 /// Query sessions by time window, optionally filtered to a list of projects.
@@ -21,12 +21,12 @@ pub fn run(
     format: &str,
     output_file: Option<&str>,
 ) -> Result<Value> {
-    let t_start: DateTime<Utc> = start
-        .parse()
-        .map_err(|e: chrono::ParseError| ValidationError::InvalidTimestamp(start.to_string(), e.to_string()))?;
-    let t_end: DateTime<Utc> = end
-        .parse()
-        .map_err(|e: chrono::ParseError| ValidationError::InvalidTimestamp(end.to_string(), e.to_string()))?;
+    let t_start: DateTime<Utc> = start.parse().map_err(|e: chrono::ParseError| {
+        ValidationError::InvalidTimestamp(start.to_string(), e.to_string())
+    })?;
+    let t_end: DateTime<Utc> = end.parse().map_err(|e: chrono::ParseError| {
+        ValidationError::InvalidTimestamp(end.to_string(), e.to_string())
+    })?;
 
     // Gather sessions
     let all_sessions: Vec<Session> = if project_ids.is_empty() {

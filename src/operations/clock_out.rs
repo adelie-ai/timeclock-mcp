@@ -15,9 +15,8 @@ pub fn run(project_id: &str, time_out: Option<&str>, note: Option<&str>) -> Resu
     if project_id.is_empty() {
         return Err(ValidationError::MissingField("project_id".to_string()).into());
     }
-    let mut session = storage::find_active_session(project_id)?.ok_or_else(|| {
-        ValidationError::NotClockedIn(project_id.to_string())
-    })?;
+    let mut session = storage::find_active_session(project_id)?
+        .ok_or_else(|| ValidationError::NotClockedIn(project_id.to_string()))?;
 
     let time_out_str = match time_out {
         Some(t) => parse_utc(t)?,
@@ -49,12 +48,12 @@ fn parse_utc(s: &str) -> Result<String> {
 
 fn validate_ordering(time_in: &str, time_out: &str) -> Result<()> {
     use chrono::DateTime;
-    let t_in: DateTime<Utc> = time_in
-        .parse()
-        .map_err(|e: chrono::ParseError| ValidationError::InvalidTimestamp(time_in.to_string(), e.to_string()))?;
-    let t_out: DateTime<Utc> = time_out
-        .parse()
-        .map_err(|e: chrono::ParseError| ValidationError::InvalidTimestamp(time_out.to_string(), e.to_string()))?;
+    let t_in: DateTime<Utc> = time_in.parse().map_err(|e: chrono::ParseError| {
+        ValidationError::InvalidTimestamp(time_in.to_string(), e.to_string())
+    })?;
+    let t_out: DateTime<Utc> = time_out.parse().map_err(|e: chrono::ParseError| {
+        ValidationError::InvalidTimestamp(time_out.to_string(), e.to_string())
+    })?;
     if t_out < t_in {
         return Err(ValidationError::TimeOutBeforeTimeIn.into());
     }

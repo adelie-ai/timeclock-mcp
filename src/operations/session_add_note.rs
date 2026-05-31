@@ -20,10 +20,8 @@ pub fn run(session_id: &str, text: &str) -> Result<Value> {
         return Err(ValidationError::MissingField("text".to_string()).into());
     }
 
-    let (_project_id, mut session) =
-        storage::find_session_by_id(session_id)?.ok_or_else(|| {
-            StorageError::SessionNotFound(session_id.to_string())
-        })?;
+    let (_project_id, mut session) = storage::find_session_by_id(session_id)?
+        .ok_or_else(|| StorageError::SessionNotFound(session_id.to_string()))?;
 
     session.notes.push(NoteEntry {
         timestamp: Utc::now().to_rfc3339(),
@@ -44,7 +42,10 @@ mod tests {
     fn adds_note_to_active_session() {
         let _env = TestEnv::new();
         let clocked = clock_in::run("proj", None, None, vec![]).unwrap();
-        let sid = clocked["session"]["session_id"].as_str().unwrap().to_string();
+        let sid = clocked["session"]["session_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         run(&sid, "first note").unwrap();
         run(&sid, "second note").unwrap();
@@ -66,7 +67,10 @@ mod tests {
     fn errors_on_empty_text() {
         let _env = TestEnv::new();
         let clocked = clock_in::run("proj2", None, None, vec![]).unwrap();
-        let sid = clocked["session"]["session_id"].as_str().unwrap().to_string();
+        let sid = clocked["session"]["session_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         assert!(run(&sid, "").is_err());
     }
 }
