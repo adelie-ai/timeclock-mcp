@@ -40,14 +40,30 @@ pub fn run(
         v
     };
 
-    // Filter to the time window (session starts within [start, end])
+    // Filter to sessions that overlap [start, end].
+    //
+    // A session overlaps the window if:
+    //   t_in <= t_end  AND  (t_out is None  OR  t_out >= t_start)
+    //
+    // This correctly includes:
+    //   - sessions that started before the window but end inside it (cross-boundary)
+    //   - active sessions (no t_out) that started before the window
+    //   - sessions contained entirely within the window
     let filtered: Vec<&Session> = all_sessions
         .iter()
         .filter(|s| {
-            if let Ok(t_in) = s.time_in.parse::<DateTime<Utc>>() {
-                t_in >= t_start && t_in <= t_end
-            } else {
-                false
+            let Ok(t_in) = s.time_in.parse::<DateTime<Utc>>() else {
+                return false;
+            };
+            if t_in > t_end {
+                return false; // started after window — no overlap
+            }
+            // Active session (no t_out) always extends to "now" — overlaps on the right.
+            match s.time_out.as_deref() {
+                None => true,
+                Some(to) => to
+                    .parse::<DateTime<Utc>>()
+                    .is_ok_and(|t_out| t_out >= t_start),
             }
         })
         .collect();
@@ -58,17 +74,41 @@ pub fn run(
     }
 }
 
+/// Build aggregate summaries (total_seconds + per-project breakdown) for a session list.
+fn aggregates(sessions: &[&Session]) -> Value {
+    let total: i64 = sessions.iter().filter_map(|s| s.duration_seconds()).sum();
+
+    let mut by_project: std::collections::HashMap<&str, i64> = std::collections::HashMap::new();
+    for s in sessions {
+        if let Some(d) = s.duration_seconds() {
+            *by_project.entry(s.project_id.as_str()).or_insert(0) += d;
+        }
+    }
+    let mut by_project_list: Vec<Value> = by_project
+        .iter()
+        .map(|(pid, secs)| json!({ "project_id": pid, "total_seconds": secs }))
+        .collect();
+    by_project_list.sort_by(|a, b| a["project_id"].as_str().cmp(&b["project_id"].as_str()));
+
+    json!({
+        "total_seconds": total,
+        "by_project": by_project_list,
+    })
+}
+
 fn render_json(sessions: &[&Session], output_file: Option<&str>) -> Result<Value> {
     let list: Vec<Value> = sessions.iter().map(|s| s.to_value()).collect();
+    let agg = aggregates(sessions);
     if let Some(path) = output_file {
-        let text = serde_json::to_string_pretty(&json!({ "sessions": &list }))?;
+        let text = serde_json::to_string_pretty(&json!({ "sessions": &list, "aggregates": &agg }))?;
         write_file(path, &text)?;
         return Ok(json!({
             "message": format!("Written {} session(s) to {}", sessions.len(), path),
             "count": sessions.len(),
+            "aggregates": agg,
         }));
     }
-    Ok(json!({ "sessions": list }))
+    Ok(json!({ "sessions": list, "aggregates": agg }))
 }
 
 fn render_csv(sessions: &[&Session], output_file: Option<&str>) -> Result<Value> {
@@ -182,5 +222,77 @@ mod tests {
         let arr = result["sessions"].as_array().unwrap();
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0]["project_id"], "acme");
+    }
+
+    /// A session that started before the window but ends inside it must be included.
+    #[test]
+    fn test_query_cross_boundary_session_included() {
+        let _env = TestEnv::new();
+        // Started 30 min before window, ends 30 min inside it.
+        let s = make_closed_session("acme", "2026-02-18T23:30:00Z", "2026-02-19T00:30:00Z");
+        storage::append_session(&s).unwrap();
+        let result = run(
+            "2026-02-19T00:00:00Z",
+            "2026-02-19T23:59:59Z",
+            &[],
+            "json",
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            result["sessions"].as_array().unwrap().len(),
+            1,
+            "cross-boundary session must be included"
+        );
+    }
+
+    /// A session entirely before the window must NOT be included.
+    #[test]
+    fn test_query_entirely_before_window_excluded() {
+        let _env = TestEnv::new();
+        let s = make_closed_session("acme", "2026-02-18T20:00:00Z", "2026-02-18T23:00:00Z");
+        storage::append_session(&s).unwrap();
+        let result = run(
+            "2026-02-19T00:00:00Z",
+            "2026-02-19T23:59:59Z",
+            &[],
+            "json",
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            result["sessions"].as_array().unwrap().len(),
+            0,
+            "session entirely before window must be excluded"
+        );
+    }
+
+    /// An active (no time_out) session that started before the window must be included.
+    #[test]
+    fn test_query_active_session_started_before_window_included() {
+        let _env = TestEnv::new();
+        // Active session: started before the query window, still open.
+        let s = Session {
+            session_id: uuid::Uuid::new_v4().to_string(),
+            project_id: "acme".to_string(),
+            time_in: "2026-02-18T22:00:00Z".to_string(),
+            time_out: None,
+            notes: vec![],
+            tags: vec![],
+        };
+        storage::append_session(&s).unwrap();
+        let result = run(
+            "2026-02-19T00:00:00Z",
+            "2026-02-19T23:59:59Z",
+            &[],
+            "json",
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            result["sessions"].as_array().unwrap().len(),
+            1,
+            "active session that spans the window must be included"
+        );
     }
 }

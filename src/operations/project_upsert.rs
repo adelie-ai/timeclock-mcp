@@ -26,10 +26,13 @@ pub fn run(project_id: Option<&str>, name: &str) -> Result<Value> {
 }
 
 fn derive_id(name: &str) -> String {
+    // Use is_ascii_alphanumeric() to match validate_project_id's ASCII-only constraint.
+    // Non-ASCII characters (accented letters, CJK, etc.) are replaced with '_' so the
+    // derived id always passes validation without an opaque error.
     name.to_lowercase()
         .chars()
         .map(|c| {
-            if c.is_alphanumeric() || c == '-' {
+            if c.is_ascii_alphanumeric() || c == '-' {
                 c
             } else {
                 '_'
@@ -62,5 +65,33 @@ mod tests {
     fn test_upsert_missing_name() {
         let _env = TestEnv::new();
         assert!(run(None, "").is_err());
+    }
+
+    #[test]
+    fn test_upsert_non_ascii_name_derives_valid_id() {
+        // "Société" contains 'é' (non-ASCII). derive_id must produce a valid ASCII id
+        // that passes validate_project_id (is_ascii_alphanumeric + '-' + '_' only).
+        let _env = TestEnv::new();
+        let result = run(None, "Société").unwrap();
+        let id = result["project"]["project_id"].as_str().unwrap();
+        // Must be non-empty and composed only of ASCII alphanumerics, '-', '_'.
+        assert!(!id.is_empty());
+        assert!(
+            id.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            "derived id {id:?} contains non-ASCII or invalid characters"
+        );
+    }
+
+    #[test]
+    fn test_derive_id_ascii_only() {
+        // Verify the mapping directly without storage.
+        // "Café & Co." → "caf__co_" (é→'_', space→'_', '&'→'_', '.'→'_')
+        // We just assert the output is all-ASCII.
+        let id = super::derive_id("Café & Co.");
+        assert!(
+            id.is_ascii(),
+            "derive_id produced non-ASCII character in {id:?}"
+        );
     }
 }
