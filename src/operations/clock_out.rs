@@ -10,7 +10,7 @@ use crate::storage;
 /// End the active session for `project_id`.
 ///
 /// - `time_out`: optional RFC3339 UTC; defaults to now.
-/// - `note`: optional; replaces existing note if provided.
+/// - `note`: optional; appended as a new timestamped note entry.
 pub fn run(project_id: &str, time_out: Option<&str>, note: Option<&str>) -> Result<Value> {
     if project_id.is_empty() {
         return Err(ValidationError::MissingField("project_id".to_string()).into());
@@ -19,7 +19,7 @@ pub fn run(project_id: &str, time_out: Option<&str>, note: Option<&str>) -> Resu
         .ok_or_else(|| ValidationError::NotClockedIn(project_id.to_string()))?;
 
     let time_out_str = match time_out {
-        Some(t) => parse_utc(t)?,
+        Some(t) => super::parse_utc(t)?,
         None => Utc::now().to_rfc3339(),
     };
 
@@ -36,14 +36,6 @@ pub fn run(project_id: &str, time_out: Option<&str>, note: Option<&str>) -> Resu
 
     storage::append_session(&session)?;
     Ok(json!({ "session": session.to_value() }))
-}
-
-fn parse_utc(s: &str) -> Result<String> {
-    use chrono::DateTime;
-    let dt: DateTime<Utc> = s.parse().map_err(|e: chrono::ParseError| {
-        ValidationError::InvalidTimestamp(s.to_string(), e.to_string())
-    })?;
-    Ok(dt.to_rfc3339())
 }
 
 fn validate_ordering(time_in: &str, time_out: &str) -> Result<()> {

@@ -27,7 +27,7 @@ pub fn run(
     }
     // Parse / default time_in
     let time_in_str = match time_in {
-        Some(t) => parse_utc(t)?,
+        Some(t) => super::parse_utc(t)?,
         None => Utc::now().to_rfc3339(),
     };
 
@@ -67,15 +67,6 @@ pub fn run(
     };
     storage::append_session(&session)?;
     Ok(json!({ "session": session.to_value() }))
-}
-
-/// Parse an RFC3339 string and re-format it as UTC RFC3339.
-fn parse_utc(s: &str) -> Result<String> {
-    use chrono::DateTime;
-    let dt: DateTime<Utc> = s.parse().map_err(|e: chrono::ParseError| {
-        ValidationError::InvalidTimestamp(s.to_string(), e.to_string())
-    })?;
-    Ok(dt.to_rfc3339())
 }
 
 #[cfg(test)]

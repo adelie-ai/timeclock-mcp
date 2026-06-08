@@ -29,7 +29,9 @@ impl McpServer {
         if !supported.contains(&protocol_version) {
             return Err(McpError::InvalidProtocolVersion(protocol_version.to_string()).into());
         }
-        let tools = self.tool_registry.list_tools();
+        // Return the standard MCP initialize response.
+        // Tools are discovered via the separate tools/list request; do NOT include a
+        // top-level "tools" key here — it is not part of the MCP spec and confuses clients.
         Ok(json!({
             "protocolVersion": protocol_version,
             "serverInfo": {
@@ -39,7 +41,6 @@ impl McpServer {
             "capabilities": {
                 "tools": { "listChanged": false },
             },
-            "tools": tools,
         }))
     }
 
