@@ -190,7 +190,7 @@ impl ToolRegistry {
             },
             {
                 "name": "timeclock_session_correct",
-                "description": "Correct fields on an existing session. Amends the record by appending a replacement (last-record-wins). The note parameter appends a new note entry.",
+                "description": "Correct fields on an existing session (time_in, time_out, tags). Amends the record by appending a replacement (last-record-wins). To append a note, use timeclock_session_add_note instead.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -205,10 +205,6 @@ impl ToolRegistry {
                         "time_out": {
                             "type": "string",
                             "description": "New RFC3339 UTC end time."
-                        },
-                        "note": {
-                            "type": "string",
-                            "description": "Note to append to the session."
                         },
                         "tags": {
                             "type": "array",
@@ -315,14 +311,13 @@ impl ToolRegistry {
                         })?;
                 let time_in = args.get("time_in").and_then(|v| v.as_str());
                 let time_out = args.get("time_out").and_then(|v| v.as_str());
-                let note = args.get("note").and_then(|v| v.as_str());
                 let tags: Option<Vec<String>> =
                     args.get("tags").and_then(|v| v.as_array()).map(|arr| {
                         arr.iter()
                             .filter_map(|v| v.as_str().map(str::to_string))
                             .collect()
                     });
-                session_correct::run(session_id, time_in, time_out, note, tags)
+                session_correct::run(session_id, time_in, time_out, tags)
             }
             "timeclock_project_delete" => {
                 let project_id =
