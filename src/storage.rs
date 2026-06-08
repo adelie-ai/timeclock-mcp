@@ -83,8 +83,14 @@ pub fn read_projects() -> Result<Vec<Project>> {
         if line.is_empty() {
             continue;
         }
-        if let Ok(project) = serde_json::from_str::<Project>(line) {
-            map.insert(project.project_id.clone(), project);
+        match serde_json::from_str::<Project>(line) {
+            Ok(project) => {
+                map.insert(project.project_id.clone(), project);
+            }
+            Err(e) => eprintln!(
+                "timeclock-mcp: skipping corrupt line in {}: {e}",
+                path.display()
+            ),
         }
     }
     let mut projects: Vec<Project> = map.into_values().collect();
@@ -134,8 +140,14 @@ pub fn read_sessions(project_id: &str) -> Result<Vec<Session>> {
         if line.is_empty() {
             continue;
         }
-        if let Ok(session) = serde_json::from_str::<Session>(line) {
-            map.insert(session.session_id.clone(), session);
+        match serde_json::from_str::<Session>(line) {
+            Ok(session) => {
+                map.insert(session.session_id.clone(), session);
+            }
+            Err(e) => eprintln!(
+                "timeclock-mcp: skipping corrupt line in {}: {e}",
+                path.display()
+            ),
         }
     }
     let mut sessions: Vec<Session> = map.into_values().collect();
@@ -198,6 +210,9 @@ pub fn append_session(session: &Session) -> Result<()> {
 
 /// Rewrite the project registry omitting the given project_id.
 /// If the file does not exist this is a no-op.
+///
+/// Uses a write-to-tmp-then-rename pattern so a crash mid-write cannot truncate
+/// the live registry file.
 pub fn delete_project(project_id: &str) -> Result<()> {
     let path = projects_file();
     if !path.exists() {
@@ -208,13 +223,19 @@ pub fn delete_project(project_id: &str) -> Result<()> {
         .iter()
         .filter(|p| p.project_id != project_id)
         .collect();
-    let mut file = fs::File::create(&path)
-        .map_err(|e| StorageError::WriteError(path.display().to_string(), e.to_string()))?;
-    for p in filtered {
-        let line = serde_json::to_string(p)? + "\n";
-        file.write_all(line.as_bytes())
-            .map_err(|e| StorageError::WriteError(path.display().to_string(), e.to_string()))?;
+    let tmp = path.with_extension("jsonl.tmp");
+    {
+        let mut file = fs::File::create(&tmp)
+            .map_err(|e| StorageError::WriteError(tmp.display().to_string(), e.to_string()))?;
+        for p in filtered {
+            let line = serde_json::to_string(p)? + "\n";
+            file.write_all(line.as_bytes())
+                .map_err(|e| StorageError::WriteError(tmp.display().to_string(), e.to_string()))?;
+        }
+        // file is flushed and closed here (drop)
     }
+    fs::rename(&tmp, &path)
+        .map_err(|e| StorageError::WriteError(path.display().to_string(), e.to_string()))?;
     Ok(())
 }
 
@@ -230,17 +251,26 @@ pub fn delete_project_sessions(project_id: &str) -> Result<()> {
 }
 
 /// Rewrite a project's session JSONL with only the provided sessions.
+///
+/// Uses a write-to-tmp-then-rename pattern so a crash mid-write cannot truncate
+/// the live session file.
 pub fn rewrite_sessions(project_id: &str, sessions: &[Session]) -> Result<()> {
     validate_project_id(project_id)?;
     ensure_data_dir()?;
     let path = session_file(project_id);
-    let mut file = fs::File::create(&path)
-        .map_err(|e| StorageError::WriteError(path.display().to_string(), e.to_string()))?;
-    for s in sessions {
-        let line = serde_json::to_string(s)? + "\n";
-        file.write_all(line.as_bytes())
-            .map_err(|e| StorageError::WriteError(path.display().to_string(), e.to_string()))?;
+    let tmp = path.with_extension("jsonl.tmp");
+    {
+        let mut file = fs::File::create(&tmp)
+            .map_err(|e| StorageError::WriteError(tmp.display().to_string(), e.to_string()))?;
+        for s in sessions {
+            let line = serde_json::to_string(s)? + "\n";
+            file.write_all(line.as_bytes())
+                .map_err(|e| StorageError::WriteError(tmp.display().to_string(), e.to_string()))?;
+        }
+        // file is flushed and closed here (drop)
     }
+    fs::rename(&tmp, &path)
+        .map_err(|e| StorageError::WriteError(path.display().to_string(), e.to_string()))?;
     Ok(())
 }
 

@@ -259,15 +259,21 @@ async fn handle_message(server: Arc<McpServer>, message: Value) -> Option<Value>
             let tool_name = params.get("name").and_then(|n| n.as_str());
             let arguments = params.get("arguments").unwrap_or(&Value::Null);
             match tool_name {
-                Some(name) => server
-                    .handle_tool_call(name, arguments)
-                    .await
-                    .map(|result| {
-                        serde_json::json!({
+                Some(name) => {
+                    // Per MCP spec, tool errors are returned as a successful JSON-RPC
+                    // response with isError:true in the content, NOT as a JSON-RPC error.
+                    // This lets the client distinguish "tool reported an error" (recoverable,
+                    // the LLM can act on it) from "protocol/transport error" (unrecoverable).
+                    match server.handle_tool_call(name, arguments).await {
+                        Ok(result) => Ok(serde_json::json!({
                             "content": [{ "type": "text", "text": result.to_string() }]
-                        })
-                    })
-                    .map_err(|e| e.to_string()),
+                        })),
+                        Err(e) => Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": e.to_string() }],
+                            "isError": true,
+                        })),
+                    }
+                }
                 None => Err("tools/call requires 'name' in params".to_string()),
             }
         }

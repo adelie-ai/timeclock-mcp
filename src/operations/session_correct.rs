@@ -1,24 +1,21 @@
 #![deny(warnings)]
 
 use chrono::DateTime;
-use chrono::Utc;
 use serde_json::{Value, json};
 
 use crate::error::{Result, StorageError, ValidationError};
-use crate::models::NoteEntry;
 use crate::storage;
 
 /// Correct fields on an existing session.
 ///
-/// Amends one or more of `time_in`, `time_out`, `tags`. If `note` is provided
-/// it is **appended** as a new timestamped note entry (use `timeclock.session.add_note`
-/// for a dedicated note-only append).  Implemented by re-appending a replacement
-/// record with the same `session_id` (last-record-wins).
+/// Amends one or more of `time_in`, `time_out`, `tags`.  Implemented by
+/// re-appending a replacement record with the same `session_id` (last-record-wins).
+///
+/// To append a note, use `timeclock_session_add_note` instead.
 pub fn run(
     session_id: &str,
     time_in: Option<&str>,
     time_out: Option<&str>,
-    note: Option<&str>,
     tags: Option<Vec<String>>,
 ) -> Result<Value> {
     if session_id.is_empty() {
@@ -40,12 +37,6 @@ pub fn run(
         })?;
         session.time_out = Some(dt.to_rfc3339());
     }
-    if let Some(n) = note {
-        session.notes.push(NoteEntry {
-            timestamp: Utc::now().to_rfc3339(),
-            text: n.to_string(),
-        });
-    }
     if let Some(t) = tags {
         session.tags = t;
     }
@@ -64,6 +55,23 @@ pub fn run(
         }
     }
 
+    // Guard: if the corrected session is active (no time_out), ensure no *other* active
+    // session already exists for the same project.  Allowing two open sessions for the
+    // same project would make clock_out and session_get_active non-deterministic.
+    if session.time_out.is_none() {
+        let existing = storage::read_sessions(&session.project_id)?;
+        let other_active = existing
+            .iter()
+            .any(|s| s.session_id != session.session_id && s.time_out.is_none());
+        if other_active {
+            return Err(ValidationError::AlreadyClockedIn(format!(
+                "{} (another active session exists; clock out first)",
+                session.project_id
+            ))
+            .into());
+        }
+    }
+
     storage::append_session(&session)?;
     Ok(json!({ "session": session.to_value() }))
 }
@@ -76,21 +84,21 @@ mod tests {
     use crate::test_helpers::TestEnv;
 
     #[test]
-    fn test_correct_note() {
+    fn test_correct_time_in() {
         let _env = TestEnv::new();
         let clocked = clock_in::run("acme", None, None, vec![]).unwrap();
         let sid = clocked["session"]["session_id"]
             .as_str()
             .unwrap()
             .to_string();
-        let result = run(&sid, None, None, Some("updated note"), None).unwrap();
-        assert_eq!(result["session"]["notes"][0]["text"], "updated note");
+        let result = run(&sid, Some("2026-02-19T08:00:00Z"), None, None).unwrap();
+        assert_eq!(result["session"]["time_in"], "2026-02-19T08:00:00+00:00");
     }
 
     #[test]
     fn test_correct_not_found() {
         let _env = TestEnv::new();
-        assert!(run("nonexistent-id", None, None, None, None).is_err());
+        assert!(run("nonexistent-id", None, None, None).is_err());
     }
 
     #[test]
@@ -102,24 +110,70 @@ mod tests {
             .unwrap()
             .to_string();
         // Set time_out before time_in => error
-        let err = run(&sid, None, Some("2026-02-19T14:00:00Z"), None, None);
+        let err = run(&sid, None, Some("2026-02-19T14:00:00Z"), None);
         assert!(err.is_err());
     }
 
     #[test]
-    fn test_correct_last_record_wins() {
+    fn test_correct_tags() {
         let _env = TestEnv::new();
-        let clocked = clock_in::run("acme", None, Some("original"), vec![]).unwrap();
+        let clocked = clock_in::run("acme", None, None, vec![]).unwrap();
         let sid = clocked["session"]["session_id"]
             .as_str()
             .unwrap()
             .to_string();
-        run(&sid, None, None, Some("corrected"), None).unwrap();
-        // Re-read and confirm both notes are present
+        run(
+            &sid,
+            None,
+            None,
+            Some(vec!["rust".to_string(), "review".to_string()]),
+        )
+        .unwrap();
         let sessions = storage::read_sessions("acme").unwrap();
         let s = sessions.iter().find(|s| s.session_id == sid).unwrap();
-        assert_eq!(s.notes.len(), 2);
-        assert_eq!(s.notes[0].text, "original");
-        assert_eq!(s.notes[1].text, "corrected");
+        assert_eq!(s.tags, vec!["rust", "review"]);
+    }
+
+    /// Reopening a closed session (clearing time_out) must be rejected when another
+    /// active session already exists for the same project.
+    #[test]
+    fn test_correct_reopen_rejected_when_active_exists() {
+        use crate::models::Session;
+        use uuid::Uuid;
+        let _env = TestEnv::new();
+
+        // Create a closed session directly in storage (bypasses clock_in's active guard).
+        let closed = Session {
+            session_id: Uuid::new_v4().to_string(),
+            project_id: "acme".to_string(),
+            time_in: "2026-02-19T08:00:00Z".to_string(),
+            time_out: Some("2026-02-19T09:00:00Z".to_string()),
+            notes: vec![],
+            tags: vec![],
+        };
+        storage::append_session(&closed).unwrap();
+        let closed_sid = closed.session_id.clone();
+
+        // Now clock in normally, creating an active session.
+        clock_in::run("acme", None, None, vec![]).unwrap();
+
+        // Attempt to reopen the closed session by clearing its time_out via session_correct.
+        // This would create a second active session — must be rejected.
+        // We hack this by passing a future time_out... no, we need to clear time_out.
+        // session_correct doesn't expose a "clear time_out" parameter, so the double-active
+        // path is reached if we directly manipulate storage. Use a raw append to simulate
+        // the scenario and verify our guard fires.
+        let mut reopened = closed.clone();
+        reopened.time_out = None; // re-open it manually in storage
+        storage::append_session(&reopened).unwrap();
+
+        // Now there are two active sessions for "acme". Calling session_correct on the
+        // re-opened session (which is currently active) while another active exists should
+        // be rejected.
+        let result = run(&closed_sid, Some("2026-02-19T08:30:00Z"), None, None);
+        assert!(
+            result.is_err(),
+            "session_correct must reject when a second active session would result"
+        );
     }
 }
