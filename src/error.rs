@@ -1,5 +1,3 @@
-#![deny(warnings)]
-
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -10,11 +8,8 @@ pub enum TimeclockError {
     #[error("Validation error: {0}")]
     Validation(#[from] ValidationError),
 
-    #[error("MCP protocol error: {0}")]
+    #[error("MCP error: {0}")]
     Mcp(#[from] McpError),
-
-    #[error("Transport error: {0}")]
-    Transport(#[from] TransportError),
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
@@ -64,26 +59,11 @@ pub enum ValidationError {
 
 #[derive(Error, Debug)]
 pub enum McpError {
-    #[error("Unsupported protocol version: {0}")]
-    InvalidProtocolVersion(String),
-
     #[error("Tool not found: {0}")]
     ToolNotFound(String),
 
     #[error("Invalid tool parameters: {0}")]
     InvalidToolParameters(String),
-}
-
-#[derive(Error, Debug)]
-pub enum TransportError {
-    #[error("Connection closed")]
-    ConnectionClosed,
-
-    #[error("Transport IO error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Invalid message format: {0}")]
-    InvalidMessage(String),
 }
 
 pub type Result<T> = std::result::Result<T, TimeclockError>;
