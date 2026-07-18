@@ -126,7 +126,10 @@ impl McpService for TimeclockService {
             ),
             ToolDef::new(
                 "timeclock_session_query",
-                "Query sessions within a time window across one, many, or all projects.",
+                "Report on tracked time: list work sessions with their durations over a date range, \
+                 for one, many, or all projects - the tool for timesheets, hours summaries, and \
+                 \"how much time did I spend\" questions. Returns JSON or CSV and can optionally \
+                 write the results to a file.",
                 json!({
                     "type": "object",
                     "properties": {
