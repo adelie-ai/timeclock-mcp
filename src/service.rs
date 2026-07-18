@@ -372,3 +372,28 @@ fn dispatch(name: &str, args: &Value) -> crate::error::Result<Value> {
         _ => Err(McpError::ToolNotFound(name.to_string()).into()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The reporting tool must surface the natural terms a user or model would
+    /// reach for when asking about hours worked (timesheets, reports, CSV export)
+    /// so tool-search can find it, rather than leading with mechanism.
+    #[test]
+    fn session_query_description_leads_with_reporting_terms() {
+        let tools = TimeclockService.tools();
+        let query = tools
+            .iter()
+            .find(|t| t.name == "timeclock_session_query")
+            .expect("timeclock_session_query tool must be registered");
+        let desc = query.description.to_lowercase();
+        for term in ["timesheet", "report", "csv"] {
+            assert!(
+                desc.contains(term),
+                "session_query description should mention '{term}'; got: {}",
+                query.description
+            );
+        }
+    }
+}
