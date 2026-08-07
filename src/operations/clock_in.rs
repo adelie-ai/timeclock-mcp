@@ -16,6 +16,10 @@ use crate::storage;
 ///
 /// Auto-registers the project if it is not yet known.
 /// Errors if there is already an active session for the project.
+///
+/// `skip_all`: `project_id`, `note` and `tags` are caller-supplied content,
+/// never a span field (mcp-core#40 D10).
+#[tracing::instrument(name = "timeclock.clock_in", skip_all)]
 pub fn run(
     project_id: &str,
     time_in: Option<&str>,

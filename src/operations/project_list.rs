@@ -5,6 +5,7 @@ use crate::storage;
 use serde_json::{Value, json};
 
 /// List all known projects, sorted by project_id.
+#[tracing::instrument(name = "timeclock.project_list", skip_all)]
 pub fn run() -> Result<Value> {
     let projects = storage::read_projects()?;
     let list: Vec<Value> = projects.into_iter().map(Value::from).collect();

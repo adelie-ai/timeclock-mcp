@@ -10,6 +10,10 @@ use crate::storage;
 /// The session is located across all project files; its project's JSONL is
 /// rewritten without the matching record.  This is a hard delete — use
 /// `timeclock.session.correct` if you only want to amend fields.
+///
+/// `skip_all`: `session_id` is caller-supplied content, never a span field
+/// (mcp-core#40 D10).
+#[tracing::instrument(name = "timeclock.session_delete", skip_all)]
 pub fn run(session_id: &str) -> Result<Value> {
     // find_session_by_id returns the session so we can echo it back, but we
     // use delete_session_by_id (which also handles not-found) to do the work.

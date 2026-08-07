@@ -9,6 +9,10 @@ use serde_json::{Value, json};
 ///
 /// - `project_id`: optional; if omitted, derived from `name` (lowercased, spaces → '_').
 /// - `name`: required.
+///
+/// `skip_all`: `project_id` and `name` are caller-supplied content (a
+/// client or project name), never a span field (mcp-core#40 D10).
+#[tracing::instrument(name = "timeclock.project_upsert", skip_all)]
 pub fn run(project_id: Option<&str>, name: &str) -> Result<Value> {
     if name.is_empty() {
         return Err(ValidationError::MissingField("name".to_string()).into());

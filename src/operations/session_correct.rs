@@ -12,6 +12,10 @@ use crate::storage;
 /// re-appending a replacement record with the same `session_id` (last-record-wins).
 ///
 /// To append a note, use `timeclock_session_add_note` instead.
+///
+/// `skip_all`: `session_id` and `tags` are caller-supplied content, never a
+/// span field (mcp-core#40 D10).
+#[tracing::instrument(name = "timeclock.session_correct", skip_all)]
 pub fn run(
     session_id: &str,
     time_in: Option<&str>,

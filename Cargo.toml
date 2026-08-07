@@ -12,10 +12,27 @@ serde_json = "1.0"
 shellexpand = "3.1"
 thiserror = "2.0.17"
 tokio = { version = "1.48.0", features = ["full"] }
+# Structured logging for this crate's own diagnostics: the storage print-site
+# conversions in src/storage.rs and the tool-handler / storage spans. Already
+# in the dependency tree through mcp-core -> adelie-telemetry, so naming it
+# directly here adds no crate.
+tracing = "0.1.44"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = "3.0"
+# The capturing layer the telemetry tests use to read back the spans and
+# events a real call produced. Already in the tree through mcp-core's
+# dependencies, so this adds no crate to the test build.
+tracing-subscriber = "0.3.23"
+
+[features]
+# OTLP export of this server's traces, metrics and log records, via
+# mcp-core's passthrough to adelie-telemetry. Off by default: with it off, no
+# opentelemetry crate is resolved, so a plain `cargo install` is unaffected.
+# Turn it on with `cargo build --features otel` and configure it with the
+# standard OTEL_* environment variables -- see README.md's Logging section.
+otel = ["mcp-core/otel"]
 
 [lints.rust]
 warnings = "deny"

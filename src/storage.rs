@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use mcp_core::telemetry::metrics::{self, Label};
+use tracing::{debug, warn};
 
 use crate::error::{Result, StorageError};
 use crate::models::{Project, Session};
@@ -68,6 +71,7 @@ pub fn ensure_data_dir() -> Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Read all known projects (last record per project_id wins).
+#[tracing::instrument(name = "timeclock.storage.read_projects", skip_all)]
 pub fn read_projects() -> Result<Vec<Project>> {
     let path = projects_file();
     if !path.exists() {
@@ -87,10 +91,7 @@ pub fn read_projects() -> Result<Vec<Project>> {
             Ok(project) => {
                 map.insert(project.project_id.clone(), project);
             }
-            Err(e) => eprintln!(
-                "timeclock-mcp: skipping corrupt line in {}: {e}",
-                path.display()
-            ),
+            Err(e) => record_corrupt_line("projects", &path, &e),
         }
     }
     let mut projects: Vec<Project> = map.into_values().collect();
@@ -124,6 +125,7 @@ pub fn project_exists(project_id: &str) -> Result<bool> {
 
 /// Read all sessions for a project (last record per session_id wins),
 /// sorted by time_in ascending.
+#[tracing::instrument(name = "timeclock.storage.read_sessions", skip_all)]
 pub fn read_sessions(project_id: &str) -> Result<Vec<Session>> {
     validate_project_id(project_id)?;
     let path = session_file(project_id);
@@ -144,15 +146,46 @@ pub fn read_sessions(project_id: &str) -> Result<Vec<Session>> {
             Ok(session) => {
                 map.insert(session.session_id.clone(), session);
             }
-            Err(e) => eprintln!(
-                "timeclock-mcp: skipping corrupt line in {}: {e}",
-                path.display()
-            ),
+            Err(e) => record_corrupt_line("sessions", &path, &e),
         }
     }
     let mut sessions: Vec<Session> = map.into_values().collect();
     sessions.sort_by(|a, b| a.time_in.cmp(&b.time_in));
     Ok(sessions)
+}
+
+/// Log and count one JSONL line that failed to parse, without letting the
+/// file's path reach WARN or above.
+///
+/// `path` sits under the operator's home directory by default
+/// (`data_dir()`'s XDG fallback), and `error`'s `Display` can echo a
+/// snippet of the line's own malformed JSON, so both are content under the
+/// level contract (mcp-core#40 D10: "INFO carries ids, counts... never
+/// content") and stay at DEBUG. `store` ("projects" or "sessions") is a
+/// fixed, bounded label -- the kind of file, not its path -- so it is safe
+/// at WARN.
+fn record_corrupt_line(store: &'static str, path: &Path, error: &serde_json::Error) {
+    warn!(
+        store,
+        reason = "corrupt_line",
+        "skipping corrupt storage line"
+    );
+    debug!(path = %path.display(), error = %error, "corrupt storage line detail");
+    record_storage_failure("corrupt_line");
+}
+
+/// Record one storage failure, bucketed into a small fixed vocabulary so the
+/// `timeclock.storage_failures` counter's `reason` label stays bounded
+/// (mcp-core#40 lesson 3: "Bound every metric label at the call site" --
+/// the registry caps at 64 values per metric, first-come, with no
+/// eviction). `reason` is `&'static str` in this signature deliberately: a
+/// project name or a path is a `String`, so the type system itself makes
+/// passing one here a compile error, not a discipline that can lapse.
+fn record_storage_failure(reason: &'static str) {
+    metrics::increment(
+        "timeclock.storage_failures",
+        &[Label::new("reason", reason)],
+    );
 }
 
 /// Read sessions across all known projects (and any other *.jsonl files).
@@ -340,4 +373,221 @@ pub fn find_session_by_id(session_id: &str) -> Result<Option<(String, Session)>>
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{TestEnv, counter_total};
+    use mcp_core::telemetry::metrics::Label;
+    use tracing::Level;
+
+    /// Stands in for the operator's home directory: the path segment that
+    /// must never reach a WARN-or-louder field or event when a storage line
+    /// fails to parse (mcp-core#40 D10). `TestEnv::with_path_segment` nests
+    /// the data directory under this, so the full file path a corrupt-line
+    /// error touches always contains it.
+    const SENTINEL: &str = "MARKER-timeclock-storage-home-9c41f2";
+
+    /// AC (mcp-core#40, per-server checklist): a corrupt line in the
+    /// projects registry is logged as a WARN carrying a bounded reason and
+    /// no path, a DEBUG carrying the full path, and a bounded-reason
+    /// storage-failure metric -- never an `eprintln!`.
+    #[test]
+    fn corrupt_project_registry_line_warn_omits_path_but_debug_keeps_it() {
+        let _env = TestEnv::with_path_segment(SENTINEL);
+        ensure_data_dir().expect("ensure_data_dir must succeed under a fresh TestEnv");
+        std::fs::write(projects_file(), "not valid json\n")
+            .expect("seed a corrupt projects registry line");
+
+        let reason_labels = [Label::new("reason", "corrupt_line")];
+        let before = counter_total("timeclock.storage_failures", &reason_labels);
+
+        let recorded = crate::test_helpers::capture(|| {
+            let result = read_projects();
+            assert!(
+                result.is_ok(),
+                "a corrupt line must be skipped, not fail the whole read: {result:?}"
+            );
+            assert!(
+                result.unwrap().is_empty(),
+                "the corrupt line must not appear as a parsed project"
+            );
+        });
+
+        assert!(
+            recorded
+                .spans
+                .iter()
+                .any(|s| s.name == "timeclock.storage.read_projects"),
+            "read_projects must open a timeclock.storage.read_projects span; spans were {:?}",
+            recorded.span_summary()
+        );
+
+        let warn = recorded
+            .events
+            .iter()
+            .find(|e| e.level == Level::WARN)
+            .unwrap_or_else(|| {
+                panic!(
+                    "a corrupt line must log a WARN; events were {:?}",
+                    recorded.event_summary()
+                )
+            });
+        assert_eq!(
+            warn.fields.get("store").map(String::as_str),
+            Some("projects"),
+            "the WARN must name which store was affected: {:?}",
+            warn.fields
+        );
+        assert_eq!(
+            warn.fields.get("reason").map(String::as_str),
+            Some("corrupt_line"),
+            "the WARN must carry a bounded reason: {:?}",
+            warn.fields
+        );
+        assert!(
+            !warn.fields.contains_key("path"),
+            "a full path must not reach the WARN field set at all: {:?}",
+            warn.fields
+        );
+        for value in warn.fields.values() {
+            assert!(
+                !value.contains(SENTINEL),
+                "the path's sentinel segment reached a WARN field: {value:?}"
+            );
+        }
+
+        for event in &recorded.events {
+            // DEBUG/TRACE may legitimately carry the path (D10) -- that is
+            // the point of the split. Only INFO and louder are checked.
+            if event.level > Level::INFO {
+                continue;
+            }
+            for (key, value) in &event.fields {
+                assert!(
+                    !value.contains(SENTINEL),
+                    "the sentinel path leaked into an INFO-or-louder event field {key:?}: \
+                     {value:?}; all events were {:?}",
+                    recorded.event_summary()
+                );
+            }
+        }
+
+        let at_debug = recorded.events.iter().any(|event| {
+            event.level == Level::DEBUG && event.fields.values().any(|v| v.contains(SENTINEL))
+        });
+        assert!(
+            at_debug,
+            "the full path must still be available at DEBUG, or the level contract has \
+             nothing to hold back; events were {:?}",
+            recorded.event_summary()
+        );
+
+        assert_eq!(
+            counter_total("timeclock.storage_failures", &reason_labels),
+            before + 1,
+            "a corrupt line must increment timeclock.storage_failures, labelled \
+             reason=corrupt_line"
+        );
+    }
+
+    /// Same criterion as the projects-registry test above, applied to a
+    /// project's session file (`storage.rs:147`'s print site).
+    #[test]
+    fn corrupt_session_line_warn_omits_path_but_debug_keeps_it() {
+        let _env = TestEnv::with_path_segment(SENTINEL);
+        ensure_data_dir().expect("ensure_data_dir must succeed under a fresh TestEnv");
+        std::fs::write(session_file("acme"), "not valid json\n")
+            .expect("seed a corrupt session line");
+
+        let reason_labels = [Label::new("reason", "corrupt_line")];
+        let before = counter_total("timeclock.storage_failures", &reason_labels);
+
+        let recorded = crate::test_helpers::capture(|| {
+            let result = read_sessions("acme");
+            assert!(
+                result.is_ok(),
+                "a corrupt line must be skipped, not fail the whole read: {result:?}"
+            );
+            assert!(
+                result.unwrap().is_empty(),
+                "the corrupt line must not appear as a parsed session"
+            );
+        });
+
+        assert!(
+            recorded
+                .spans
+                .iter()
+                .any(|s| s.name == "timeclock.storage.read_sessions"),
+            "read_sessions must open a timeclock.storage.read_sessions span; spans were {:?}",
+            recorded.span_summary()
+        );
+
+        let warn = recorded
+            .events
+            .iter()
+            .find(|e| e.level == Level::WARN)
+            .unwrap_or_else(|| {
+                panic!(
+                    "a corrupt line must log a WARN; events were {:?}",
+                    recorded.event_summary()
+                )
+            });
+        assert_eq!(
+            warn.fields.get("store").map(String::as_str),
+            Some("sessions"),
+            "the WARN must name which store was affected: {:?}",
+            warn.fields
+        );
+        assert_eq!(
+            warn.fields.get("reason").map(String::as_str),
+            Some("corrupt_line"),
+            "the WARN must carry a bounded reason: {:?}",
+            warn.fields
+        );
+        assert!(
+            !warn.fields.contains_key("path"),
+            "a full path must not reach the WARN field set at all: {:?}",
+            warn.fields
+        );
+        for value in warn.fields.values() {
+            assert!(
+                !value.contains(SENTINEL),
+                "the path's sentinel segment reached a WARN field: {value:?}"
+            );
+        }
+
+        for event in &recorded.events {
+            if event.level > Level::INFO {
+                continue;
+            }
+            for (key, value) in &event.fields {
+                assert!(
+                    !value.contains(SENTINEL),
+                    "the sentinel path leaked into an INFO-or-louder event field {key:?}: \
+                     {value:?}; all events were {:?}",
+                    recorded.event_summary()
+                );
+            }
+        }
+
+        let at_debug = recorded.events.iter().any(|event| {
+            event.level == Level::DEBUG && event.fields.values().any(|v| v.contains(SENTINEL))
+        });
+        assert!(
+            at_debug,
+            "the full path must still be available at DEBUG, or the level contract has \
+             nothing to hold back; events were {:?}",
+            recorded.event_summary()
+        );
+
+        assert_eq!(
+            counter_total("timeclock.storage_failures", &reason_labels),
+            before + 1,
+            "a corrupt line must increment timeclock.storage_failures, labelled \
+             reason=corrupt_line"
+        );
+    }
 }

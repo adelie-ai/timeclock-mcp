@@ -14,6 +14,11 @@ use crate::storage;
 /// - `project_ids`: if empty or None, queries all projects.
 /// - `format`: `"json"` (default) or `"csv"`.
 /// - `output_file`: if provided, write results to disk and return a summary message.
+///
+/// `skip_all`: `project_ids` is caller-supplied content and `output_file`
+/// is a filesystem path -- often under the operator's home directory --
+/// so neither may reach a span field (mcp-core#40 D10).
+#[tracing::instrument(name = "timeclock.session_query", skip_all)]
 pub fn run(
     start: &str,
     end: &str,
