@@ -379,6 +379,8 @@ fn dispatch(name: &str, args: &Value) -> crate::error::Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::{TestEnv, capture_async};
+    use tracing::Level;
 
     /// The reporting tool must surface the natural terms a user or model would
     /// reach for when asking about hours worked (timesheets, reports, CSV export)
@@ -397,6 +399,68 @@ mod tests {
                 "session_query description should mention '{term}'; got: {}",
                 query.description
             );
+        }
+    }
+
+    /// AC (mcp-core#40 D10, epic AC7): this server records billable time
+    /// against clients and projects, so a project name is content -- it must
+    /// never reach a span field or an INFO-or-louder event, at any tool
+    /// handler.
+    ///
+    /// The same run proves the positive half too: a project_upsert call
+    /// opens this server's own `timeclock.project_upsert` span, so the test
+    /// cannot pass simply because nothing was instrumented.
+    #[test]
+    fn tool_call_records_no_sentinel_content() {
+        let _env = TestEnv::new();
+        const SENTINEL: &str = "MARKER-timeclock-project-name-7d21c8";
+
+        let recorded = capture_async(|| async {
+            let svc = TimeclockService;
+            let _ = svc
+                .call_tool(
+                    "timeclock_project_upsert",
+                    &serde_json::json!({ "name": SENTINEL }),
+                )
+                .await;
+        });
+
+        assert!(
+            recorded
+                .spans
+                .iter()
+                .any(|s| s.name == "timeclock.project_upsert"),
+            "a project_upsert call must open a timeclock.project_upsert span; spans were {:?}",
+            recorded.span_summary()
+        );
+
+        for span in &recorded.spans {
+            for (key, value) in &span.fields {
+                assert!(
+                    !value.contains(SENTINEL),
+                    "the sentinel leaked into span {:?} field {key:?}: {value:?}; \
+                     all spans were {:?}",
+                    span.name,
+                    recorded.span_summary()
+                );
+            }
+        }
+
+        for event in &recorded.events {
+            // DEBUG/TRACE may legitimately carry tool arguments (D10) --
+            // that is mcp-core's own dispatch layer, inherited rather than
+            // added here. Only INFO and louder are checked.
+            if event.level > Level::INFO {
+                continue;
+            }
+            for (key, value) in &event.fields {
+                assert!(
+                    !value.contains(SENTINEL),
+                    "the sentinel leaked into an INFO-or-louder event field {key:?}: \
+                     {value:?}; all events were {:?}",
+                    recorded.event_summary()
+                );
+            }
         }
     }
 }
