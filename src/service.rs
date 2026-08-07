@@ -402,43 +402,149 @@ mod tests {
         }
     }
 
-    /// AC (mcp-core#40 D10, epic AC7): this server records billable time
-    /// against clients and projects, so a project name is content -- it must
-    /// never reach a span field or an INFO-or-louder event, at any tool
-    /// handler.
+    /// The value planted in every content-shaped argument below: a project
+    /// id, a project name, a session note, a note-annotation text, a tag,
+    /// or a session id. This server records billable time against clients
+    /// and projects, so every one of those is content under the level
+    /// contract (mcp-core#40 D10) -- it must never reach a span field or an
+    /// INFO-or-louder event, at any tool handler.
+    const SENTINEL: &str = "MARKER-timeclock-sentinel-7d21c8";
+
+    /// The value planted in `timeclock_session_query`'s `output_file`: a
+    /// filesystem path, the other leak-prone shape this server handles
+    /// (`operations/session_query.rs` writes report content to it via
+    /// `shellexpand` + `fs::write`).
+    const SENTINEL_PATH_NAME: &str = "MARKER-timeclock-sentinel-path-4e9a1b.json";
+
+    /// One entry per registered tool: its name, the span its handler opens
+    /// (`main.rs`'s `#[tracing::instrument(name = "timeclock.<op>", ...)]`
+    /// on the matching `operations/*.rs::run`), and an argument set with
+    /// [`SENTINEL`] (and, for `timeclock_session_query`, a sentinel path)
+    /// planted in every string-shaped field the tool accepts.
     ///
-    /// The same run proves the positive half too: a project_upsert call
-    /// opens this server's own `timeclock.project_upsert` span, so the test
-    /// cannot pass simply because nothing was instrumented.
+    /// `timeclock_project_list` takes no arguments, so it has nothing to
+    /// plant a sentinel in; it stays in the table anyway so the coverage
+    /// check below still requires it to be listed.
+    fn leak_test_cases() -> Vec<(&'static str, &'static str, Value)> {
+        let output_file = crate::storage::data_dir()
+            .join(SENTINEL_PATH_NAME)
+            .display()
+            .to_string();
+        vec![
+            (
+                "timeclock_project_list",
+                "timeclock.project_list",
+                json!({}),
+            ),
+            (
+                "timeclock_project_upsert",
+                "timeclock.project_upsert",
+                json!({ "project_id": SENTINEL, "name": SENTINEL }),
+            ),
+            (
+                "timeclock_project_delete",
+                "timeclock.project_delete",
+                json!({ "project_id": SENTINEL, "delete_entries": false }),
+            ),
+            (
+                "timeclock_clock_in",
+                "timeclock.clock_in",
+                json!({ "project_id": SENTINEL, "note": SENTINEL, "tags": [SENTINEL] }),
+            ),
+            (
+                "timeclock_clock_out",
+                "timeclock.clock_out",
+                json!({ "project_id": SENTINEL, "note": SENTINEL }),
+            ),
+            (
+                "timeclock_session_get_active",
+                "timeclock.session_get_active",
+                json!({ "project_id": SENTINEL }),
+            ),
+            (
+                "timeclock_session_query",
+                "timeclock.session_query",
+                json!({
+                    "start": "2026-01-01T00:00:00Z",
+                    "end": "2026-01-02T00:00:00Z",
+                    "project_ids": [SENTINEL],
+                    "format": "json",
+                    "output_file": output_file,
+                }),
+            ),
+            (
+                "timeclock_session_add_note",
+                "timeclock.session_add_note",
+                json!({ "session_id": SENTINEL, "text": SENTINEL }),
+            ),
+            (
+                "timeclock_session_delete",
+                "timeclock.session_delete",
+                json!({ "session_id": SENTINEL }),
+            ),
+            (
+                "timeclock_session_correct",
+                "timeclock.session_correct",
+                json!({ "session_id": SENTINEL, "tags": [SENTINEL] }),
+            ),
+        ]
+    }
+
+    /// AC (mcp-core#40 D10, epic AC7, lesson 8): no tool handler ever puts
+    /// [`SENTINEL`] (or the sentinel path) into a span field or an
+    /// INFO-or-louder event.
+    ///
+    /// Table-driven over the whole tool list, not one tool: mcp-core#40
+    /// lesson 8 records that a single-tool version of this test caught a
+    /// dropped `skip_all` on the one operation it exercised and missed it
+    /// on two others. The coverage check below makes that failure mode
+    /// itself a test failure -- add a tool without adding its row here, and
+    /// this test fails on the mismatch before it ever gets to leak-checking.
+    ///
+    /// The same run proves the positive half per tool too: every handler
+    /// must open its listed span, so the test cannot pass by silently
+    /// exercising fewer handlers than the table claims.
     #[test]
     fn tool_call_records_no_sentinel_content() {
         let _env = TestEnv::new();
-        const SENTINEL: &str = "MARKER-timeclock-project-name-7d21c8";
+        let cases = leak_test_cases();
+
+        let tools = TimeclockService.tools();
+        let registered: std::collections::BTreeSet<&str> =
+            tools.iter().map(|t| t.name.as_str()).collect();
+        let tested: std::collections::BTreeSet<&str> =
+            cases.iter().map(|(name, _, _)| *name).collect();
+        assert_eq!(
+            registered, tested,
+            "this test's table must cover exactly the registered tool set (mcp-core#40 \
+             lesson 8): a tool present in one set but not the other is untested or stale"
+        );
 
         let recorded = capture_async(|| async {
             let svc = TimeclockService;
-            let _ = svc
-                .call_tool(
-                    "timeclock_project_upsert",
-                    &serde_json::json!({ "name": SENTINEL }),
-                )
-                .await;
+            for (name, _, args) in &cases {
+                let _ = svc.call_tool(name, args).await;
+            }
         });
 
-        assert!(
-            recorded
-                .spans
-                .iter()
-                .any(|s| s.name == "timeclock.project_upsert"),
-            "a project_upsert call must open a timeclock.project_upsert span; spans were {:?}",
-            recorded.span_summary()
-        );
+        for (name, expected_span, _) in &cases {
+            if *name == "timeclock_project_list" {
+                // No sentinel-bearing argument exists for this tool; the
+                // coverage assertion above is what keeps it honest.
+                continue;
+            }
+            assert!(
+                recorded.spans.iter().any(|s| s.name == *expected_span),
+                "{name} must open a {expected_span} span; spans were {:?}",
+                recorded.span_summary()
+            );
+        }
 
         for span in &recorded.spans {
             for (key, value) in &span.fields {
                 assert!(
-                    !value.contains(SENTINEL),
-                    "the sentinel leaked into span {:?} field {key:?}: {value:?}; \
+                    !value.contains(SENTINEL) && !value.contains(SENTINEL_PATH_NAME),
+                    "a sentinel leaked into span {:?} field {key:?}: {value:?}; \
                      all spans were {:?}",
                     span.name,
                     recorded.span_summary()
@@ -455,8 +561,8 @@ mod tests {
             }
             for (key, value) in &event.fields {
                 assert!(
-                    !value.contains(SENTINEL),
-                    "the sentinel leaked into an INFO-or-louder event field {key:?}: \
+                    !value.contains(SENTINEL) && !value.contains(SENTINEL_PATH_NAME),
+                    "a sentinel leaked into an INFO-or-louder event field {key:?}: \
                      {value:?}; all events were {:?}",
                     recorded.event_summary()
                 );
