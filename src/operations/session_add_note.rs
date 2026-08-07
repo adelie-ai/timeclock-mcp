@@ -12,6 +12,11 @@ use crate::storage;
 /// Works on both active and closed sessions; the note is appended to the
 /// session's `notes` list and the updated record is re-written via the
 /// standard append / last-record-wins mechanism.
+///
+/// `skip_all`: `session_id` and `text` are caller-supplied content, never a
+/// span field (mcp-core#40 D10) -- `text` is a session note, which this
+/// server's whole purpose is to hold on behalf of a client or project.
+#[tracing::instrument(name = "timeclock.session_add_note", skip_all)]
 pub fn run(session_id: &str, text: &str) -> Result<Value> {
     if session_id.is_empty() {
         return Err(ValidationError::MissingField("session_id".to_string()).into());

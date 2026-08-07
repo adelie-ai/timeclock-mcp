@@ -10,6 +10,10 @@ use crate::storage;
 /// If `delete_entries` is `false` (the default / safe behaviour) and the
 /// project has any recorded sessions the operation is refused — you must
 /// explicitly pass `delete_entries = true` to also wipe the session data.
+///
+/// `skip_all`: `project_id` is caller-supplied content, never a span field
+/// (mcp-core#40 D10).
+#[tracing::instrument(name = "timeclock.project_delete", skip_all)]
 pub fn run(project_id: &str, delete_entries: bool) -> Result<Value> {
     let sessions = storage::read_sessions(project_id)?;
 

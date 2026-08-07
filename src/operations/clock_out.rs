@@ -11,6 +11,10 @@ use crate::storage;
 ///
 /// - `time_out`: optional RFC3339 UTC; defaults to now.
 /// - `note`: optional; appended as a new timestamped note entry.
+///
+/// `skip_all`: `project_id` and `note` are caller-supplied content, never a
+/// span field (mcp-core#40 D10).
+#[tracing::instrument(name = "timeclock.clock_out", skip_all)]
 pub fn run(project_id: &str, time_out: Option<&str>, note: Option<&str>) -> Result<Value> {
     if project_id.is_empty() {
         return Err(ValidationError::MissingField("project_id".to_string()).into());

@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use mcp_core::telemetry::metrics::{self, Label};
+use tracing::{debug, warn};
 
 use crate::error::{Result, StorageError};
 use crate::models::{Project, Session};
@@ -68,6 +71,7 @@ pub fn ensure_data_dir() -> Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Read all known projects (last record per project_id wins).
+#[tracing::instrument(name = "timeclock.storage.read_projects", skip_all)]
 pub fn read_projects() -> Result<Vec<Project>> {
     let path = projects_file();
     if !path.exists() {
@@ -87,10 +91,7 @@ pub fn read_projects() -> Result<Vec<Project>> {
             Ok(project) => {
                 map.insert(project.project_id.clone(), project);
             }
-            Err(e) => eprintln!(
-                "timeclock-mcp: skipping corrupt line in {}: {e}",
-                path.display()
-            ),
+            Err(e) => record_corrupt_line("projects", &path, &e),
         }
     }
     let mut projects: Vec<Project> = map.into_values().collect();
@@ -124,6 +125,7 @@ pub fn project_exists(project_id: &str) -> Result<bool> {
 
 /// Read all sessions for a project (last record per session_id wins),
 /// sorted by time_in ascending.
+#[tracing::instrument(name = "timeclock.storage.read_sessions", skip_all)]
 pub fn read_sessions(project_id: &str) -> Result<Vec<Session>> {
     validate_project_id(project_id)?;
     let path = session_file(project_id);
@@ -144,15 +146,46 @@ pub fn read_sessions(project_id: &str) -> Result<Vec<Session>> {
             Ok(session) => {
                 map.insert(session.session_id.clone(), session);
             }
-            Err(e) => eprintln!(
-                "timeclock-mcp: skipping corrupt line in {}: {e}",
-                path.display()
-            ),
+            Err(e) => record_corrupt_line("sessions", &path, &e),
         }
     }
     let mut sessions: Vec<Session> = map.into_values().collect();
     sessions.sort_by(|a, b| a.time_in.cmp(&b.time_in));
     Ok(sessions)
+}
+
+/// Log and count one JSONL line that failed to parse, without letting the
+/// file's path reach WARN or above.
+///
+/// `path` sits under the operator's home directory by default
+/// (`data_dir()`'s XDG fallback), and `error`'s `Display` can echo a
+/// snippet of the line's own malformed JSON, so both are content under the
+/// level contract (mcp-core#40 D10: "INFO carries ids, counts... never
+/// content") and stay at DEBUG. `store` ("projects" or "sessions") is a
+/// fixed, bounded label -- the kind of file, not its path -- so it is safe
+/// at WARN.
+fn record_corrupt_line(store: &'static str, path: &Path, error: &serde_json::Error) {
+    warn!(
+        store,
+        reason = "corrupt_line",
+        "skipping corrupt storage line"
+    );
+    debug!(path = %path.display(), error = %error, "corrupt storage line detail");
+    record_storage_failure("corrupt_line");
+}
+
+/// Record one storage failure, bucketed into a small fixed vocabulary so the
+/// `timeclock.storage_failures` counter's `reason` label stays bounded
+/// (mcp-core#40 lesson 3: "Bound every metric label at the call site" --
+/// the registry caps at 64 values per metric, first-come, with no
+/// eviction). `reason` is `&'static str` in this signature deliberately: a
+/// project name or a path is a `String`, so the type system itself makes
+/// passing one here a compile error, not a discipline that can lapse.
+fn record_storage_failure(reason: &'static str) {
+    metrics::increment(
+        "timeclock.storage_failures",
+        &[Label::new("reason", reason)],
+    );
 }
 
 /// Read sessions across all known projects (and any other *.jsonl files).
@@ -442,8 +475,7 @@ mod tests {
         }
 
         let at_debug = recorded.events.iter().any(|event| {
-            event.level == Level::DEBUG
-                && event.fields.values().any(|v| v.contains(SENTINEL))
+            event.level == Level::DEBUG && event.fields.values().any(|v| v.contains(SENTINEL))
         });
         assert!(
             at_debug,
@@ -542,8 +574,7 @@ mod tests {
         }
 
         let at_debug = recorded.events.iter().any(|event| {
-            event.level == Level::DEBUG
-                && event.fields.values().any(|v| v.contains(SENTINEL))
+            event.level == Level::DEBUG && event.fields.values().any(|v| v.contains(SENTINEL))
         });
         assert!(
             at_debug,

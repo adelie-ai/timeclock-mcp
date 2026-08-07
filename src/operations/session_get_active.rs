@@ -7,6 +7,10 @@ use serde_json::{Value, json};
 /// Return all currently active sessions.
 ///
 /// - `project_id`: if `Some`, restrict to that project; otherwise all projects.
+///
+/// `skip_all`: `project_id` is caller-supplied content, never a span field
+/// (mcp-core#40 D10).
+#[tracing::instrument(name = "timeclock.session_get_active", skip_all)]
 pub fn run(project_id: Option<&str>) -> Result<Value> {
     let sessions = match project_id {
         Some(id) => {
