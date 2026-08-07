@@ -8,7 +8,7 @@
 //! `src/storage.rs` and `src/service.rs` cover span fields directly; this
 //! file is the other half of "write both content tests".
 //!
-//! `sentinel_never_reaches_stdout_or_info_stderr` is table-driven over the
+//! `sentinel_never_reaches_info_or_louder_stderr` is table-driven over the
 //! whole tool list rather than one tool (mcp-core#40 lesson 8: a
 //! single-tool version of this kind of test caught a leak on the one
 //! operation it exercised and missed it on two others). This file has no

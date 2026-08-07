@@ -528,11 +528,10 @@ mod tests {
         });
 
         for (name, expected_span, _) in &cases {
-            if *name == "timeclock_project_list" {
-                // No sentinel-bearing argument exists for this tool; the
-                // coverage assertion above is what keeps it honest.
-                continue;
-            }
+            // The span-existence check is independent of whether a tool has
+            // a sentinel-bearing argument to leak (timeclock_project_list
+            // does not): it is the positive control proving every handler
+            // was actually invoked, not proving any one leak absent.
             assert!(
                 recorded.spans.iter().any(|s| s.name == *expected_span),
                 "{name} must open a {expected_span} span; spans were {:?}",
