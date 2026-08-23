@@ -74,6 +74,9 @@ impl TestEnv {
 
 impl Drop for TestEnv {
     fn drop(&mut self) {
+        // Safety: the `_guard` field (holding TEST_LOCK) is dropped after this
+        // `drop()` method returns. While this code runs, the mutex is still held,
+        // preventing other tests from observing a half-changed environment.
         unsafe {
             std::env::remove_var("TIMECLOCK_DATA_DIR");
         }
